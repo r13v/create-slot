@@ -111,11 +111,13 @@ export const FeatureA = () => {
 ```tsx
 // feature-b.tsx
 
+import { useState } from "react"
 import { Slots } from "./app-slots"
-const { n, inc } = Slots.Menu.useProps()
 
 export const FeatureB = () => {
-  const [inner, setInner] = React.useState(0)
+  const { n, inc } = Slots.Menu.useProps()
+
+  const [inner, setInner] = useState(0)
 
   return (
     <Slots.Menu>
