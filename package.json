@@ -1,0 +1,27 @@
+{
+  "name": "create-slot",
+  "version": "1.0.2",
+  "description": "",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup index.ts --dts --format esm,cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "peerDependencies": {
+    "effector": "^22.0.0",
+    "effector-react": "^22.0.0",
+    "react": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.14",
+    "effector": "^22.8.6",
+    "effector-react": "^22.5.3",
+    "react": "^18.2.0",
+    "tsup": "^7.1.0",
+    "typescript": "^5.1.3"
+  }
+}
