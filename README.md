@@ -4,36 +4,36 @@
 
 ```ts
 import React from "react"
-import { Domain, Event, Store } from "effector"
+import {Domain, Event, Store} from "effector"
 
 type Params = {
-  name?: string
-  domain?: Domain
+    name?: string
+    domain?: Domain
 }
+
 type FillProps = {
-  children: React.ReactElement
-  order?: Order
+    children: React.ReactElement
+    order?: Order
 }
 
 type Order = number
 
-type AddPayload = {
-  node: React.ReactElement
-  order: Order
-}
+type FillPayload = { node: React.ReactElement; order: Order }
+
 type RemovePayload = Order
 
 type EffectorUnits<Props> = {
-  add: Event<AddPayload>
-  remove: Event<RemovePayload>
-  props: Store<Props>
-  $list: Store<Array<React.ReactElement>>
+    add: Event<FillPayload>
+    remove: Event<RemovePayload>
+    set: Event<FillPayload>
+    $props: Store<Props>
+    $list: Store<Array<React.ReactElement>>
 }
 
 type Slot<P> = React.FC<FillProps> & {
-  Host: React.FC<React.PropsWithChildren<P>>
-  units: EffectorUnits<P>
-  useProps: () => P
+    Host: React.FC<React.PropsWithChildren<P>>
+    units: EffectorUnits<P>
+    useProps: () => P
 }
 
 declare function createSlot<Props>(params?: Params): Slot<Props>
@@ -48,7 +48,7 @@ export { createSlot }
 ```ts
 // app-slots.ts
 
-import { createSlot } from 'create-slot
+import { createSlot } from 'create-slot'
 
 export const Slots = {
   Menu: createSlot<{ n: number, inc: () => void }>()
