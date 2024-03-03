@@ -31,8 +31,8 @@ type EffectorUnits<Props> = {
     add: Event<FillPayload>
     remove: Event<RemovePayload>
     set: Event<FillPayload>
-    $props: Store<Props>
-    $list: Store<Array<React.ReactElement>>
+    props: Store<Props>
+    fills: Store<Array<React.ReactElement>>
 }
 
 type Slot<P> = React.FC<FillProps> & {
@@ -143,8 +143,8 @@ export function createSlot<Props>(params: Params = {}): Slot<Props> {
         add,
         remove,
         set,
-        $list: $fills,
-        $props: PropsGate.state,
+        fills: $fills,
+        props: PropsGate.state,
     }
 
     return Slot

@@ -19,8 +19,8 @@ type EffectorUnits<Props> = {
     add: Event<FillPayload>;
     remove: Event<RemovePayload>;
     set: Event<FillPayload>;
-    $props: Store<Props>;
-    $list: Store<Array<React.ReactElement>>;
+    props: Store<Props>;
+    fills: Store<Array<React.ReactElement>>;
 };
 type Slot<P> = React.FC<FillProps> & {
     Host: React.FC<React.PropsWithChildren<P>>;

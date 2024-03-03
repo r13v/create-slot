@@ -68,8 +68,8 @@ function createSlot(params = {}) {
     add,
     remove,
     set,
-    $list: $fills,
-    $props: PropsGate.state
+    fills: $fills,
+    props: PropsGate.state
   };
   return Slot;
 }
