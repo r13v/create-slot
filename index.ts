@@ -30,7 +30,7 @@ type RemovePayload = Order
 type EffectorUnits<Props> = {
     add: Event<FillPayload>
     remove: Event<RemovePayload>
-    set: Event<FillPayload>
+    set: Event<FillPayload[]>
     props: Store<Props>
     fills: Store<Array<React.ReactElement>>
 }
@@ -55,7 +55,7 @@ export function createSlot<Props>(params: Params = {}): Slot<Props> {
 
     // events for fills
     const add = createEvent<FillPayload>({domain, name: `${name}::add`})
-    const set = createEvent<FillPayload>({domain, name: `${name}::set`})
+    const set = createEvent<FillPayload[]>({domain, name: `${name}::set`})
     const remove = createEvent<RemovePayload>({domain, name: `${name}::remove`})
 
     // reducer for fills
@@ -68,7 +68,7 @@ export function createSlot<Props>(params: Params = {}): Slot<Props> {
             delete list[order]
             return [...list]
         })
-        .on(set, (_, fill) => [fill.node])
+        .on(set, (_, fills) => fills.map((fill) => fill.node))
 
     // Gate for passing props to the slot
     const PropsGate = createGate<Props>({

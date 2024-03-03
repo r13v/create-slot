@@ -22,7 +22,7 @@ function createSlot(params = {}) {
   }).on(remove, (list, order) => {
     delete list[order];
     return [...list];
-  }).on(set, (_, fill) => [fill.node]);
+  }).on(set, (_, fills) => fills.map((fill) => fill.node));
   const PropsGate = createGate({
     domain,
     name: `${name}::props_gate`

@@ -18,7 +18,7 @@ type RemovePayload = Order;
 type EffectorUnits<Props> = {
     add: Event<FillPayload>;
     remove: Event<RemovePayload>;
-    set: Event<FillPayload>;
+    set: Event<FillPayload[]>;
     props: Store<Props>;
     fills: Store<Array<React.ReactElement>>;
 };
