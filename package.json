@@ -13,9 +13,9 @@
   "author": "",
   "license": "ISC",
   "peerDependencies": {
-    "effector": "^22.0.0",
-    "effector-react": "^22.0.0",
-    "react": "^18.0.0"
+    "effector": "*",
+    "effector-react": "*",
+    "react": "*"
   },
   "devDependencies": {
     "@types/react": "^18.2.14",
