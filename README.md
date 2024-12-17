@@ -77,7 +77,7 @@ export const Menu = () => {
 
         <Slots.Menu.Host n={n} inc={inc}>
           <li>Default view when no fills added</li>
-        </Slots.Menu>
+        </Slots.Menu.Host>
       </ul>
     </div>
   )
