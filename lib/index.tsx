@@ -1,13 +1,12 @@
 import * as React from "react"
 
-type FillStatus = "entered" | "ended"
+type Fill = React.ReactElement
 
-type Fill = React.ReactElement & { status: FillStatus }
-
-type Slot<Props> = React.FC<{ children: React.ReactElement }> & {
-  Host: React.FC<Props>
-  useProps(): Props
-  useStatus(): FillStatus
+type Slot<Props> = React.FC<{
+  children: React.ReactElement
+  order?: number
+}> & {
+  Host: React.FC<React.PropsWithChildren<Props>>
 }
 
 type SlotConfig = {
@@ -17,72 +16,52 @@ type SlotConfig = {
 
 type SetFills = React.Dispatch<React.SetStateAction<(Fill | null)[]>>
 
-export function createSlot<Props extends React.PropsWithChildren>(
-  config?: SlotConfig,
-): Slot<Props> {
+export function createSlot<Props>(config?: SlotConfig): Slot<Props> {
   let _setFills: SetFills | null = null
   let nextKey = 0
 
-  const PropsContext = React.createContext<Props | null>(null)
-  const StatusContext = React.createContext<FillStatus>("entered")
-
   const SlotComponent: Slot<Props> = (props) => {
-    const { children } = props
+    const { children, order = nextKey++ } = props
 
     if (!children) {
       throw new Error("'Slot' without children rendered")
     }
 
-    const keyRef = React.useRef(nextKey++)
-
-    const fill: Fill = Object.assign(children, { status: "entered" as const })
+    const fill: Fill = children
 
     React.useEffect(() => {
       if (!_setFills) {
         throw new Error("`Host` does not mounted")
       }
 
-      const key = keyRef.current
+      const key = order
 
-      _setFills((prev) => {
+      const setter = _setFills
+
+      setter((prev) => {
         const next = [...prev]
         next[key] = fill
 
         return next
       })
 
-      return () => {
-        if (!_setFills) {
-          throw new Error("`Host` does not mounted")
-        }
-
-        _setFills((prev) => {
+      const unmount = () => {
+        setter((prev) => {
           const next = [...prev]
-          const fill = next[key]
-
-          if (!fill) {
-            throw new Error(`Fill #${key} does not exists`)
-          }
-
-          fill.status = "ended"
+          next[key] = null
 
           return next
         })
-
-        setTimeout(() => {
-          if (!_setFills) {
-            throw new Error("`Host` does not mounted")
-          }
-
-          _setFills((prev) => {
-            const next = [...prev]
-            next[key] = null
-
-            return next
-          })
-        }, config?.unmountDelay ?? 0)
       }
-    }, [fill])
+
+      return () => {
+        if (!config?.unmountDelay) {
+          return unmount()
+        }
+
+        setTimeout(unmount, config?.unmountDelay)
+      }
+    }, [fill, order])
 
     return null
   }
@@ -90,7 +69,7 @@ export function createSlot<Props extends React.PropsWithChildren>(
   const Host: Slot<Props>["Host"] = (props) => {
     const [fills, setFills] = React.useState<(Fill | null)[]>([])
 
-    React.useEffect(() => {
+    React.useLayoutEffect(() => {
       if (_setFills) {
         throw new Error("Multiple 'Host' mounted")
       }
@@ -105,34 +84,18 @@ export function createSlot<Props extends React.PropsWithChildren>(
 
     const hasFills = fills.some(Boolean)
 
-    if (!hasFills) {
-      return props.children
-    }
+    const hasFallback =
+      props &&
+      typeof props === "object" &&
+      "children" in props &&
+      React.isValidElement(props.children)
 
-    return <PropsContext.Provider value={props}>{fills}</PropsContext.Provider>
+    const defaultFill = hasFallback ? props.children : null
+
+    return hasFills ? fills : defaultFill
   }
 
   SlotComponent.Host = Host
-
-  SlotComponent.useProps = () => {
-    const value = React.useContext(PropsContext)
-
-    if (!value) {
-      throw new Error("'useProps' value is not exists")
-    }
-
-    return value
-  }
-
-  SlotComponent.useStatus = () => {
-    const value = React.useContext(StatusContext)
-
-    if (!value) {
-      throw new Error("'useStatus' value is not exists")
-    }
-
-    return value
-  }
 
   if (config?.name) {
     SlotComponent.displayName = config.name
