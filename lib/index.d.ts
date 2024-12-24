@@ -15,3 +15,5 @@ export type SlotConfig = {
 }
 
 export type SetFills = React.Dispatch<React.SetStateAction<(Fill | null)[]>>
+
+export function createSlot<Props>(config: SlotConfig = {}): Slot<Props>
