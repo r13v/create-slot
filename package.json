@@ -1,9 +1,9 @@
 {
   "name": "create-slot",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "main": "lib/index.js",
-  "types": "lib/types.d.ts",
+  "types": "lib/index.d.ts",
   "scripts": {
     "dev": "vite",
     "lint": "eslint .",
