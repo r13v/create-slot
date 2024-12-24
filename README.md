@@ -11,96 +11,70 @@ npm install create-slot
 ## Usage
 
 ```tsx
+import { useState } from "react"
 import { createSlot } from "create-slot"
 
-// Create slots
 const Slots = {
-  Sidebar: createSlot<{ onClick: () => void }>(),
-  HeaderRight: createSlot(),
-  Main: createSlot(),
+  Menu: createSlot(),
 }
 
-const Header = () => {
+export function App() {
+  const [a, setA] = useState(true)
+  const [b, setB] = useState(true)
+
   return (
     <div>
+      <div>
+        <h1>App</h1>
+
+        <button onClick={() => setA((x) => !x)}>
+          Feature A ({a ? "enabled" : "disabled"})
+        </button>
+
+        <button onClick={() => setB((x) => !x)}>
+          Feature B ({b ? "enabled" : "disabled"})
+        </button>
+      </div>
+
+      <Menu />
+
+      {a && <FeatureA />}
+      {b && <FeatureB />}
+    </div>
+  )
+}
+
+function Menu() {
+  return (
+    <div>
+      <h1>Menu </h1>
+
       <ul>
         <li>Home</li>
-        <li>About</li>
-        <li>Contact</li>
+        <li>Products</li>
+
+        <Slots.Menu.Host>
+          <li>Placeholder</li>
+        </Slots.Menu.Host>
       </ul>
-
-      <div>
-        <Slots.HeaderRight.Host /> // <- Host is a component that renders the slot
-      </div>
     </div>
   )
 }
 
-const Sidebar = () => {
-  const onClick = () => {
-    console.log("clicked")
-  }
-
+function FeatureA() {
   return (
-    <div>
-      <Slots.Sidebar.Host onClick={onClick} /> // <- Pass props to the slot if needed
-    </div>
+    <Slots.Menu>
+      <li>Feature A</li>
+    </Slots.Menu>
   )
 }
 
-const Main = () => {
+function FeatureB() {
   return (
-    <Slots.Main.Host>
-      <div>Default content. Will be overridden by slot.</div>
-    </Slots.Main.Host>
+    <Slots.Menu>
+      <li>Feature B</li>
+    </Slots.Menu>
   )
 }
 
-
-const Page = ({ children }) => {
-  return (
-    <div>
-      <Header />
-      <Sidebar />
-      <Main />
-      {children}
-    </div>
-  )
-}
-
-const UserProfileFeature = () => {
-  const [isOpen, setIsOpen] = useState(false)
-  const hostProps = Slots.Sidebar.useProps()
-
-  const onClick = () => {
-    setIsOpen(true)
-    hostProps.onClick()
-  }
-
-  return (
-    <>
-      <Slots.HeaderRight>
-        <button onClick={onClick}>Profile</button>
-      </Slots.HeaderRight>
-
-      <Slots.Sidebar>
-        <button onClick={onClick}>Profile</button>
-      </Slots.Sidebar>
-
-      {isOpen && (
-        <Slots.Main>
-          <div>User profile</div>
-        </Slots.Main>
-      )}
-    </>
-  )
-}
-
-const App = () => {
-  return (
-    <Page>
-      <UserProfileFeature />
-    </Page>
-  )
-}
 ```
