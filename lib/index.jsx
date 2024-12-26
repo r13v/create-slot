@@ -1,27 +1,28 @@
+// @ts-check
 import * as React from "react"
+import { createContext } from "react"
 
 /**
  * `createSlot` is a factory function that creates a Slot component.
  * @template Props
- * @param {import('./index.js').SlotConfig} [config]
- * @returns {import('./index.js').Slot<Props>}
+ * @returns {import('./index.jsx').Slot<Props>}
  */
-export function createSlot(config) {
-  /** @type {import('./index.js').SetFills | null} */
+export function createSlot() {
+  /** @type {import('./index.jsx').SetFills | null} */
   let _setFills = null
   let nextKey = 0
 
   /**
-   * @type {import('./index.js').Slot<Props>}
+   * @type {import('./index.jsx').Slot<Props>}
    */
-  const SlotComponent = (props) => {
-    const { children, order = nextKey++ } = props
+  const SlotComponent = ({ order, children }) => {
+    const keyRef = React.useRef(order ?? nextKey++)
 
     if (!children) {
       throw new Error("'Slot' without children rendered")
     }
 
-    /** @type {import('./index.js').Fill} */
+    /** @type {import('./index.jsx').Fill} */
     const fill = children
 
     React.useEffect(() => {
@@ -29,7 +30,7 @@ export function createSlot(config) {
         throw new Error("`Host` does not mounted")
       }
 
-      const key = order
+      const key = keyRef.current
       const setter = _setFills
 
       setter((prev) => {
@@ -38,31 +39,27 @@ export function createSlot(config) {
         return next
       })
 
-      const unmount = () => {
+      return () => {
         setter((prev) => {
           const next = [...prev]
           next[key] = null
           return next
         })
       }
-
-      return () => {
-        if (!config?.unmountDelay) {
-          return unmount()
-        }
-        setTimeout(unmount, config?.unmountDelay)
-      }
-    }, [fill, order])
+    }, [fill])
 
     return null
   }
 
+  /** @type {(import('./index.jsx').PropsContext<Props>)} */
+  const PropsContext = createContext(null)
+
   /**
-   * @type {import('./index.js').Slot<Props>["Host"]}
+   * @type {import('./index.jsx').Slot<Props>["Host"]}
    */
   const Host = (props) => {
     const [fills, setFills] = React.useState(
-      /** @type {(import('./index.js').Fill | null)[]} */ [],
+      /** @type {(import('./index.jsx').Fill | null)[]} */ [],
     )
 
     React.useLayoutEffect(() => {
@@ -80,23 +77,15 @@ export function createSlot(config) {
 
     const hasFills = fills.some(Boolean)
 
-    const hasFallback =
-      props &&
-      typeof props === "object" &&
-      "children" in props &&
-      React.isValidElement(props.children)
-
-    const defaultFill = hasFallback ? props.children : null
-
-    return hasFills ? fills : defaultFill
+    return (
+      <PropsContext.Provider value={props}>
+        {hasFills ? fills : props.children}
+      </PropsContext.Provider>
+    )
   }
 
   SlotComponent.Host = Host
-
-  if (config?.name) {
-    SlotComponent.displayName = config.name
-    SlotComponent.Host.displayName = `${config.name}__Host`
-  }
+  SlotComponent.useProps = () => React.useContext(PropsContext)
 
   return SlotComponent
 }

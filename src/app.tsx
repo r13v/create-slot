@@ -1,13 +1,13 @@
-import { useState } from "react"
+import React from "react"
 import { createSlot } from "../lib"
 
 const Slots = {
-  Menu: createSlot(),
+  Menu: createSlot<{ n: number; inc: () => void }>(),
 }
 
 export function App() {
-  const [a, setA] = useState(true)
-  const [b, setB] = useState(true)
+  const [a, setA] = React.useState(true)
+  const [b, setB] = React.useState(true)
 
   return (
     <div>
@@ -32,15 +32,19 @@ export function App() {
 }
 
 function Menu() {
+  const [n, inc] = React.useReducer((x) => x + 1, 0)
+
   return (
     <div>
-      <h1>Menu </h1>
+      <h1>
+        Menu <button onClick={inc}>{n}</button>
+      </h1>
 
       <ul>
         <li>Home</li>
         <li>Products</li>
 
-        <Slots.Menu.Host>
+        <Slots.Menu.Host n={n} inc={inc}>
           <li>Placeholder</li>
         </Slots.Menu.Host>
       </ul>
@@ -49,17 +53,29 @@ function Menu() {
 }
 
 function FeatureA() {
+  const [n, inc] = React.useReducer((x) => x + 1, 0)
+
   return (
-    <Slots.Menu>
-      <li>Feature A</li>
+    <Slots.Menu order={0}>
+      <li>
+        Feature A <button onClick={inc}>Inner counter: {n}</button>
+      </li>
     </Slots.Menu>
   )
 }
 
 function FeatureB() {
   return (
-    <Slots.Menu>
-      <li>Feature B</li>
+    <Slots.Menu order={1}>
+      <li>
+        Feature B <HostPropsExample />
+      </li>
     </Slots.Menu>
   )
+}
+
+function HostPropsExample() {
+  const { n, inc } = Slots.Menu.useProps()
+
+  return <button onClick={inc}>Host counter: {n}</button>
 }
