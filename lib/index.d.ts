@@ -7,13 +7,11 @@ export type Slot<Props> = React.FC<{
   order?: number
 }> & {
   Host: React.FC<React.PropsWithChildren<Props>>
+  useProps(): Props
 }
 
-export type SlotConfig = {
-  name?: string
-  unmountDelay?: number
-}
+export type PropsContext<Props> = React.Context<Props>
 
 export type SetFills = React.Dispatch<React.SetStateAction<(Fill | null)[]>>
 
-export function createSlot<Props>(config: SlotConfig = {}): Slot<Props>
+export function createSlot<Props>(): Slot<Props>
