@@ -1,28 +1,30 @@
-// @ts-check
 import * as React from "react"
 import { createContext } from "react"
 
-/**
- * `createSlot` is a factory function that creates a Slot component.
- * @template Props
- * @returns {import('./index.jsx').Slot<Props>}
- */
-export function createSlot() {
-  /** @type {import('./index.jsx').SetFills | null} */
-  let _setFills = null
+export type Slot<Props> = React.FC<{
+  children: React.ReactElement
+  order?: number
+}> & {
+  Host: React.FC<React.PropsWithChildren<Props>>
+  useProps(): Props
+}
+
+type Fill = React.ReactElement
+type SetFills = React.Dispatch<React.SetStateAction<(Fill | null)[]>>
+
+// Factory function that creates a Slot component.
+export function createSlot<T>(): Slot<T> {
+  let _setFills: SetFills | null = null
   let nextKey = 0
 
-  /**
-   * @type {import('./index.jsx').Slot<Props>}
-   */
-  const SlotComponent = ({ order, children }) => {
+  const SlotComponent: Slot<T> = ({ order, children }) => {
     const keyRef = React.useRef(order ?? nextKey++)
 
     if (!children) {
       throw new Error("'Slot' without children rendered")
     }
 
-    /** @type {import('./index.jsx').Fill} */
+    /** @type {import('./create-slot.js').Fill} */
     const fill = children
 
     React.useEffect(() => {
@@ -51,15 +53,11 @@ export function createSlot() {
     return null
   }
 
-  /** @type {(import('./index.jsx').PropsContext<Props>)} */
-  const PropsContext = createContext(null)
+  const PropsContext = createContext(null as T)
 
-  /**
-   * @type {import('./index.jsx').Slot<Props>["Host"]}
-   */
-  const Host = (props) => {
+  const Host: Slot<T>["Host"] = (props) => {
     const [fills, setFills] = React.useState(
-      /** @type {(import('./index.jsx').Fill | null)[]} */ [],
+      /** @type {(import('./create-slot.js').Fill | null)[]} */ [],
     )
 
     React.useLayoutEffect(() => {
@@ -67,7 +65,7 @@ export function createSlot() {
         throw new Error("Multiple 'Host' mounted")
       }
 
-      _setFills = setFills
+      _setFills = setFills as SetFills
 
       return () => {
         _setFills = null

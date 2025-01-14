@@ -1,14 +1,15 @@
 {
   "name": "create-slot",
-  "version": "2.0.3",
+  "version": "2.0.4",
+  "private": true,
   "type": "module",
-  "main": "lib/index.jsx",
-  "types": "lib/index.d.ts",
+  "exports": "./lib/create-slot.tsx",
   "repository": "r13v/create-slot",
   "scripts": {
     "dev": "vite",
     "lint": "eslint .",
-    "format": "prettier ."
+    "format": "prettier .",
+    "bundle": "npx smartbundle@latest"
   },
   "peerDependencies": {
     "react": "*",
