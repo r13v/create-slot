@@ -1,5 +1,5 @@
 import React from "react"
-import { createSlot } from "../lib"
+import { createSlot } from "../lib/create-slot.tsx"
 
 const Slots = {
   Menu: createSlot<{ n: number; inc: () => void }>(),
