@@ -70,9 +70,7 @@ export function createSlot<T>(): Slot<T> {
   const PropsContext = createContext(null as T)
 
   const Host: Slot<T>["Host"] = (props) => {
-    const [fills, setFills] = React.useState(
-      /** @type {(import('./create-slot.js').Fill | null)[]} */ [],
-    )
+    const [fills, setFills] = React.useState([])
 
     React.useLayoutEffect(() => {
       if (_setFills) {
