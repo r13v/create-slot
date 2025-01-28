@@ -3,7 +3,6 @@ import { createContext } from "react"
 
 type Fill = React.ReactElement
 type SetFills = React.Dispatch<React.SetStateAction<(Fill | null)[]>>
-type SlotId = number
 type FillKey = number
 
 export type Slot<Props> = React.FC<{
@@ -14,14 +13,8 @@ export type Slot<Props> = React.FC<{
   useProps(): Props
 }
 
-let nextSlotId = 0
-
-// Used to populate the Host component on the first render.
-const Registry: Record<SlotId, (Fill | null)[]> = {}
-
 // Factory function that creates a Slot component.
 export function createSlot<T>(): Slot<T> {
-  let slotId = nextSlotId++
   let _setFills: SetFills | null = null
   let nextKey: FillKey = 0
 
@@ -33,10 +26,6 @@ export function createSlot<T>(): Slot<T> {
     }
 
     const fill = children
-
-    const fills = Registry[slotId] ?? []
-    fills[keyRef.current] = fill
-    Registry[slotId] = fills
 
     React.useEffect(() => {
       if (!_setFills) {
@@ -53,9 +42,6 @@ export function createSlot<T>(): Slot<T> {
       })
 
       return () => {
-        const fills = Registry[slotId] ?? []
-        fills[key] = null
-
         setter((prev) => {
           const next = [...prev]
           next[key] = null
@@ -86,7 +72,6 @@ export function createSlot<T>(): Slot<T> {
     }, [])
 
     const hasFills = fills.some(Boolean)
-    const registry = Registry[slotId] ?? []
 
     let content = props.children
 
@@ -94,14 +79,8 @@ export function createSlot<T>(): Slot<T> {
       content = fills
     }
 
-    if (!hasFills && registry.some(Boolean)) {
-      content = registry
-    }
-
     return (
-      <PropsContext.Provider value={props}>
-        {content}
-      </PropsContext.Provider>
+      <PropsContext.Provider value={props}>{content}</PropsContext.Provider>
     )
   }
 
