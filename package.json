@@ -1,6 +1,6 @@
 {
   "name": "create-slot",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "type": "module",
   "exports": {
     ".": {
