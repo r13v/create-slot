@@ -2,22 +2,14 @@
   "name": "create-slot",
   "version": "2.0.8",
   "type": "module",
-  "exports": {
-    ".": {
-      "import": "./dist/create-slot.js",
-      "require": "./dist/create-slot.cjs"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "types": "./dist/create-slot.d.ts",
+  "private": true,
+  "exports": "./lib/create-slot.tsx",
   "repository": "r13v/create-slot",
   "scripts": {
     "dev": "vite",
     "lint": "eslint .",
     "format": "prettier .",
-    "bundle": "tsup"
+    "bundle": "smartbundle"
   },
   "peerDependencies": {
     "react": "*",
@@ -27,7 +19,6 @@
     "@eslint/js": "^9.9.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.0.1",
-    "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^9.9.0",
@@ -35,21 +26,13 @@
     "eslint-plugin-react-refresh": "^0.4.9",
     "globals": "^15.9.0",
     "prettier": "^3.4.1",
-    "tsup": "^8.3.5",
+    "smartbundle": "^0.13.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
     "vite": "^5.4.1"
   },
-  "tsup": {
-    "entry": ["lib/create-slot.tsx"],
-    "sourcemap": true,
-    "clean": true,
-    "dts": true,
-    "format": ["cjs", "esm"],
-    "external": ["react"],
-    "target": "node20"
-  },
   "dependencies": {
+    "@types/react": "^18.3.18",
     "create-slot": "^2.0.5"
   }
 }
