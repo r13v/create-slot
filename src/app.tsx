@@ -1,11 +1,7 @@
 import React from "react"
-import { createSlot } from "../lib/create-slot.tsx"
+import { Slots } from "./slots"
 
-const Slots = {
-  Menu: createSlot<{ n: number; inc: () => void }>(),
-}
-
-export function App() {
+export function App({ children }: { children: React.ReactNode }) {
   const [a, setA] = React.useState(true)
   const [b, setB] = React.useState(true)
 
@@ -27,6 +23,8 @@ export function App() {
 
       {a && <FeatureA />}
       {b && <FeatureB />}
+
+      {children}
     </div>
   )
 }
