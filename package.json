@@ -48,8 +48,5 @@
     "format": ["cjs", "esm"],
     "external": ["react"],
     "target": "node20"
-  },
-  "dependencies": {
-    "create-slot": "^2.0.5"
   }
 }
