@@ -4,6 +4,7 @@ import { Slots } from "./slots"
 export function App({ children }: { children: React.ReactNode }) {
   const [a, setA] = React.useState(true)
   const [b, setB] = React.useState(true)
+  const [c, setC] = React.useState(true)
 
   return (
     <div>
@@ -17,12 +18,18 @@ export function App({ children }: { children: React.ReactNode }) {
         <button onClick={() => setB((x) => !x)}>
           Feature B ({b ? "enabled" : "disabled"})
         </button>
+
+        <button onClick={() => setC((x) => !x)}>
+          Custom Menu Item ({c ? "enabled" : "disabled"})
+        </button>
       </div>
 
       <Menu />
 
       {a && <FeatureA />}
       {b && <FeatureB />}
+
+      {c && <CustomMenuItemFeature />}
 
       {children}
     </div>
@@ -45,6 +52,17 @@ function Menu() {
         <Slots.Menu.Host n={n} inc={inc}>
           <li>Placeholder</li>
         </Slots.Menu.Host>
+      </ul>
+
+      <h2>Multiple Hosts</h2>
+      <ul>
+        {[1, 2, 3].map((n) => {
+          return (
+            <Slots.MenuItem.Host key={n} n={n}>
+              <li>Default {n}</li>
+            </Slots.MenuItem.Host>
+          )
+        })}
       </ul>
     </div>
   )
@@ -76,4 +94,22 @@ function HostPropsExample() {
   const { n, inc } = Slots.Menu.useProps()
 
   return <button onClick={inc}>Host counter: {n}</button>
+}
+
+function CustomMenuItemFeature() {
+  return (
+    <Slots.MenuItem>
+      <CustomMenuItem />
+    </Slots.MenuItem>
+  )
+}
+
+function CustomMenuItem() {
+  const { n } = Slots.MenuItem.useProps()
+
+  if (n === 2) {
+    return null
+  }
+
+  return <li>Custom {n}</li>
 }
