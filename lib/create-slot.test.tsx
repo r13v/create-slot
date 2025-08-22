@@ -1,7 +1,7 @@
 import React from "react"
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect } from "vitest"
 
 import { createSlot } from "./create-slot"
 
@@ -234,21 +234,6 @@ describe("createSlot", () => {
     expect(getListItemTexts(menu2)).toEqual(["Feature A"])
   })
 
-  it("throws an error if a Slot renders while no Host is mounted", () => {
-    const Slots = { Menu: createSlot() }
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
-
-    expect(() =>
-      render(
-        <Slots.Menu>
-          <li>Orphan</li>
-        </Slots.Menu>,
-      ),
-    ).toThrow(/`?Host`? is not mounted/)
-
-    consoleError.mockRestore()
-  })
-
   it("updates fill content on Slot child change without remounting", async () => {
     const user = userEvent.setup()
     const Slots = { Menu: createSlot<{ n: number; inc: () => void }>() }
@@ -348,6 +333,149 @@ describe("createSlot", () => {
     await user.click(btn)
     expect(btn).toHaveTextContent("n: 2")
 
+    expect(mounts).toBe(1)
+  })
+
+  it("throws if a Slot is rendered without children", () => {
+    const Slots = { Menu: createSlot<{ n: number; inc: () => void }>() }
+
+    // Cast to any to bypass TS children requirement and assert runtime error
+    expect(() =>
+      render(
+        React.createElement(
+          Slots.Menu as unknown as React.ComponentType<Record<string, unknown>>,
+          { order: 0 },
+        ) as React.ReactElement,
+      ),
+    ).toThrow("'Slot' without children rendered")
+  })
+
+  it("backfills fills into a Host that mounts later", () => {
+    const Slots = { Menu: createSlot<{ n: number; inc: () => void }>() }
+
+    function FeatureA() {
+      return (
+        <Slots.Menu order={0}>
+          <li>Feature A</li>
+        </Slots.Menu>
+      )
+    }
+
+    function App({ showHost }: { showHost: boolean }) {
+      return (
+        <>
+          {showHost && (
+            <ul data-testid="menu">
+              <Slots.Menu.Host n={0} inc={() => {}}>
+                <li>Placeholder</li>
+              </Slots.Menu.Host>
+            </ul>
+          )}
+          <FeatureA />
+        </>
+      )
+    }
+
+    const { rerender, container } = render(<App showHost={false} />)
+
+    // Mount Host after the fill is already mounted
+    rerender(<App showHost={true} />)
+
+    const list = within(container).getByTestId("menu")
+    expect(getListItemTexts(list)).toEqual(["Feature A"])
+  })
+
+  it("isolates fills and Hosts across different Slot factories", () => {
+    const SlotsA = { Menu: createSlot<{ n: number; inc: () => void }>() }
+    const SlotsB = { Menu: createSlot<{ n: number; inc: () => void }>() }
+
+    function FeatureA() {
+      return (
+        <SlotsA.Menu order={0}>
+          <li>Feature A</li>
+        </SlotsA.Menu>
+      )
+    }
+
+    function FeatureB() {
+      return (
+        <SlotsB.Menu order={0}>
+          <li>Feature B</li>
+        </SlotsB.Menu>
+      )
+    }
+
+    function Menus() {
+      return (
+        <div>
+          <ul data-testid="menu-a">
+            <SlotsA.Menu.Host n={0} inc={() => {}}>
+              <li>Placeholder A</li>
+            </SlotsA.Menu.Host>
+          </ul>
+          <ul data-testid="menu-b">
+            <SlotsB.Menu.Host n={0} inc={() => {}}>
+              <li>Placeholder B</li>
+            </SlotsB.Menu.Host>
+          </ul>
+        </div>
+      )
+    }
+
+    const { container } = render(
+      <>
+        <Menus />
+        <FeatureA />
+        <FeatureB />
+      </>,
+    )
+
+    const menuA = within(container).getByTestId("menu-a")
+    const menuB = within(container).getByTestId("menu-b")
+    expect(getListItemTexts(menuA)).toEqual(["Feature A"])
+    expect(getListItemTexts(menuB)).toEqual(["Feature B"])
+  })
+
+  it("does not remount a fill if its order prop changes", async () => {
+    const user = userEvent.setup()
+    const Slots = { Menu: createSlot<{ n: number; inc: () => void }>() }
+    let mounts = 0
+
+    function Child() {
+      React.useEffect(() => {
+        mounts++
+      }, [])
+      return <span data-testid="child">X</span>
+    }
+
+    function App() {
+      const [order, toggle] = React.useReducer(
+        (x: number) => (x === 0 ? 1 : 0),
+        0,
+      )
+      return (
+        <>
+          <button onClick={toggle}>Toggle Order</button>
+          <ul>
+            <Slots.Menu.Host n={0} inc={() => {}}>
+              <li>Placeholder</li>
+            </Slots.Menu.Host>
+          </ul>
+          <Slots.Menu order={order}>
+            <li>
+              <Child />
+            </li>
+          </Slots.Menu>
+        </>
+      )
+    }
+
+    render(<App />)
+    expect(screen.getAllByTestId("child").length).toBe(1)
+    expect(mounts).toBe(1)
+
+    await user.click(screen.getByRole("button", { name: "Toggle Order" }))
+    expect(screen.getAllByTestId("child").length).toBe(1)
     expect(mounts).toBe(1)
   })
 })

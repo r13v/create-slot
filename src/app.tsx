@@ -1,7 +1,14 @@
 import React from "react"
-import { Slots } from "./slots"
 
-export function App({ children }: { children: React.ReactNode }) {
+import { createSlot } from "../lib/create-slot"
+
+const Slots = {
+  Menu: createSlot<{ n: number; inc: () => void }>(),
+  MenuItem: createSlot<{ n: number }>(),
+  Delayed: createSlot(),
+}
+
+export function App() {
   const [a, setA] = React.useState(true)
   const [b, setB] = React.useState(true)
   const [c, setC] = React.useState(true)
@@ -31,13 +38,21 @@ export function App({ children }: { children: React.ReactNode }) {
 
       {c && <CustomMenuItemFeature />}
 
-      {children}
+      <DelayedFill />
     </div>
   )
 }
 
 function Menu() {
   const [n, inc] = React.useReducer((x) => x + 1, 0)
+
+  const [isDelayedVisible, setIsDelayedVisible] = React.useState(false)
+
+  React.useEffect(() => {
+    setTimeout(() => {
+      setIsDelayedVisible(true)
+    }, 1000)
+  }, [])
 
   return (
     <div>
@@ -64,6 +79,12 @@ function Menu() {
           )
         })}
       </ul>
+
+      {isDelayedVisible && (
+        <Slots.Delayed.Host>
+          <li>Delayed default</li>
+        </Slots.Delayed.Host>
+      )}
     </div>
   )
 }
@@ -112,4 +133,12 @@ function CustomMenuItem() {
   }
 
   return <li>Custom {n}</li>
+}
+
+function DelayedFill() {
+  return (
+    <Slots.Delayed>
+      <li>Delayed fill</li>
+    </Slots.Delayed>
+  )
 }
