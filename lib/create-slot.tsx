@@ -86,11 +86,7 @@ export function createSlot<T>(): Slot<T> {
 
     const hasFills = fills.some(Boolean)
 
-    let content: React.ReactNode = props.children
-
-    if (hasFills) {
-      content = fills.filter(Boolean)
-    }
+    const content = hasFills ? fills.filter(Boolean) : props.children
 
     return (
       <PropsContext.Provider value={props as T}>
