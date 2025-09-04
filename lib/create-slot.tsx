@@ -1,4 +1,14 @@
-import * as React from "react"
+import {
+  useEffect,
+  useLayoutEffect,
+  useContext,
+  createContext,
+  useRef,
+  useMemo,
+  useCallback,
+  useState,
+  cloneElement,
+} from "react"
 
 type Fill = React.ReactElement
 type SetFills = React.Dispatch<React.SetStateAction<(Fill | null)[]>>
@@ -12,27 +22,30 @@ export type Slot<Props> = React.FC<{
   useProps(): Props
 }
 
+export const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect
+
 // Factory function that creates a Slot component.
 export function createSlot<T>(): Slot<T> {
   const setters = new Setters()
   let nextKey: FillKey = 0
 
   const SlotComponent: Slot<T> = ({ order, children }) => {
-    const keyRef = React.useRef(order ?? nextKey++)
+    const keyRef = useRef(order ?? nextKey++)
 
     if (!children) {
       throw new Error("'Slot' without children rendered")
     }
 
-    const fill = React.useMemo(
+    const fill = useMemo(
       () =>
-        React.cloneElement(children, {
+        cloneElement(children, {
           key: keyRef.current,
         }),
       [children],
     )
 
-    const updateFill = React.useCallback(() => {
+    const updateFill = useCallback(() => {
       const key = keyRef.current
 
       setters.forEach((setter) => {
@@ -54,11 +67,11 @@ export function createSlot<T>(): Slot<T> {
       }
     }, [fill])
 
-    React.useEffect(() => {
+    useIsomorphicLayoutEffect(() => {
       return updateFill()
     }, [updateFill])
 
-    React.useEffect(() => {
+    useIsomorphicLayoutEffect(() => {
       return setters.subscribe(() => {
         updateFill()
       })
@@ -67,12 +80,12 @@ export function createSlot<T>(): Slot<T> {
     return null
   }
 
-  const PropsContext = React.createContext(null as T)
+  const PropsContext = createContext(null as T)
 
   const Host: Slot<T>["Host"] = (props) => {
-    const [fills, setFills] = React.useState<(Fill | null)[]>([])
+    const [fills, setFills] = useState<(Fill | null)[]>([])
 
-    React.useLayoutEffect(() => {
+    useIsomorphicLayoutEffect(() => {
       setters.add(setFills)
 
       return () => {
@@ -96,7 +109,7 @@ export function createSlot<T>(): Slot<T> {
   }
 
   SlotComponent.Host = Host
-  SlotComponent.useProps = () => React.useContext(PropsContext)
+  SlotComponent.useProps = () => useContext(PropsContext)
 
   return SlotComponent
 }
