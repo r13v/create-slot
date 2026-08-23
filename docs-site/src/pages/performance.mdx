@@ -1,0 +1,115 @@
+---
+title: Performance
+description: What a re-render costs, what the host does about it, and the two things it asks of your application.
+showAskAi: false
+---
+
+# Performance
+
+A host re-renders whenever anything above it does, and it hands every
+contribution the same props it was given. Left alone, that makes one feature's
+state change everyone else's render: a toolbar with a hundred contributions
+would render all hundred because a search box beside it took a keystroke.
+
+So the host compares. It holds its own props steady for as long as their values
+are, and it renders each contribution through a memoised view of the component
+its author wrote. **A host whose props did not really change re-renders
+nothing.**
+
+That is held as a budget in the library's own render-count tests, and measured
+with `npm run bench` — worth about 5× on a slot with a hundred contributions.
+
+It asks two things of your application in return:
+
+1. **Keep the `plugins` array stable.** A new array identity rebuilds the index.
+2. **Pass host props by value where you can.** An object rebuilt each render
+   counts as a change.
+
+Both are below, and neither is required for correctness — a broken rule costs
+render time, never a wrong result.
+
+## Keep the plugin list stable
+
+The index is grouped and ranked once per array *identity*. A filter written
+inline produces a fresh array on every render of the provider, which rebuilds
+the index and re-renders every contribution.
+
+```tsx twoslash
+// [!include ~/snippets/performance-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/performance-guide.tsx:unstable]
+```
+
+Hold the list in a `useMemo`, or in a module:
+
+```tsx twoslash
+// [!include ~/snippets/performance-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/performance-guide.tsx:stable]
+```
+
+`onError` and `renderFailed` are exempt. They live in a context of their own,
+read only where a contribution is isolated, so writing them inline — which is
+how everyone writes them — never reaches a host.
+
+## Pass host props by value where you can
+
+A number costs nothing to re-check. An object rebuilt each render counts as a
+change, exactly as it would to `memo`.
+
+```tsx twoslash
+// [!include ~/snippets/performance-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/performance-guide.tsx:props]
+```
+
+This makes an unchanged host free; it never makes a changed one wrong.
+
+## A contribution is still plain data
+
+```tsx twoslash
+// [!include ~/snippets/performance-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/performance-guide.tsx:contribution]
+```
+
+`contribute()` hands back the component you passed, untouched. The memoised view
+belongs to the host and is cached on your component, so rebuilding the index
+never remounts anything.
+
+## Runtime fills
+
+A fill's element is cloned once with a stable key and held in the store, so a
+fill whose *content* changes reconciles against the old element rather than
+remounting.
+
+Hosts read the store with `useSyncExternalStore` and get a snapshot that is
+cached per slot and rebuilt only when that slot changes. A slot with no fills
+returns one shared empty array, so a host that no fill ever touches never
+re-renders because of the runtime channel — and a fill added to one slot does
+not disturb the hosts of any other.
+
+Runtime fills are not memoised the way declared contributions are: the host
+renders the element it was handed, and that element's identity is the one the
+fill committed. Whatever wraps it inside your own tree decides the rest.
+
+## What each channel costs
+
+| | Declarative | Runtime |
+| --- | --- | --- |
+| Work per plugin-list change | group and sort the whole index once | — |
+| Work per host render, props unchanged | none — every contribution is memoised | none — the snapshot is cached |
+| Work per host render, props changed | one render per contribution | one render per fill |
+| Work per fill mount or unmount | — | re-sort that slot, re-render its hosts |
+| What your application must hold stable | the `plugins` array | nothing |
+
+## Measuring it yourself
+
+Render counts, not milliseconds, are what to assert on. The library's own suite
+does exactly that: it counts renders per contribution across a host update and
+fails if the count grows.
+
+```bash
+npm run test:run   # render-count budgets
+npm run bench      # comparative mount and update cost, 10 and 100 contributions
+```

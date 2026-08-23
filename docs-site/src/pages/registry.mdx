@@ -1,0 +1,164 @@
+---
+title: Plugin registry
+description: The declarative channel — defineSlot, definePlugin and PluginProvider — and the manifest a server render can see.
+showAskAi: false
+---
+
+import { RegistryDemo } from "../components/registry-demo"
+
+# Plugin registry
+
+The registry is the declarative half of `create-slot`, exported from the same
+entry point. The shift it makes: the source of truth about contributions moves
+out of the React tree and into an index built during render. A contribution
+stops being an element that an effect teleports and becomes **data plus a
+component** — so a host can enumerate its contributions synchronously, which is
+exactly what a server render needs.
+
+Four names, and the manifest the library reads is two fields wide.
+
+## The whole surface
+
+```ts
+defineSlot<Props>(name): SlotDefinition<Props>  // { name, Host, Fill, contribute, useProps }
+definePlugin(definition): Plugin                // { id, contributes? } plus your own fields
+<PluginProvider plugins onError? renderFailed? />
+usePluginId(): string
+```
+
+## 1. Name the slots
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+```
+
+## 2. Declare the contributions
+
+A plugin is an object with an `id` and a list of contributions. A contribution
+is an ordinary component that receives the host's props.
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+// ---cut---
+// [!include ~/snippets/registry-guide.tsx:plugin]
+```
+
+`id` must be unique: it becomes part of every contribution's React key, and in
+development the provider reports a duplicate. That is the only thing the library
+checks about a manifest.
+
+## 3. Mount the provider
+
+The provider takes the plugin array already filtered by the application — by
+flag, by tenant, by permission. It builds and sorts the index during render, and
+nothing is registered from an effect.
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+// [!include ~/snippets/registry-guide.tsx:plugin]
+// ---cut---
+// [!include ~/snippets/registry-guide.tsx:provider]
+```
+
+## 4. Decide which plugins are enabled
+
+The library never filters. `plugins` is whatever array you hand it, so enabling
+and disabling is an application concern — and that is deliberate, because only
+the application knows whether the answer has to survive a hydration.
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+// [!include ~/snippets/registry-guide.tsx:plugin]
+// [!include ~/snippets/registry-guide.tsx:provider]
+// ---cut---
+// [!include ~/snippets/registry-guide.tsx:enabled]
+```
+
+Two rules come with that array, and both are cheap to keep:
+
+- **It must match on the server and the client**, in the same order. See
+  [the SSR contract](/server-rendering#the-contract-in-one-sentence).
+- **It must be stable across renders.** A filter written inline in JSX produces
+  a fresh array every time and re-renders every contribution. See
+  [Performance](/performance#keep-the-plugin-list-stable).
+
+## A suggested file layout
+
+Nothing enforces this, and the library imports none of it. It is just the shape
+that keeps features from importing each other:
+
+```
+src/
+  slots.ts            # defineSlot calls — the only module both sides import
+  plugins/
+    pricing/
+      index.ts        # definePlugin: the manifest
+      nav-item.tsx    # the contribution components
+    reporting/
+      ...
+  catalog.ts          # the array, in the order the server and client agree on
+  app.tsx             # PluginProvider, and the hosts
+```
+
+A feature imports `slots.ts` and nothing else from the application. The
+application imports `catalog.ts`. Neither direction crosses between features.
+
+## See it work
+
+Enable a plugin and both hosts get its contributions at once. One card reads its
+own plugin id. The crash-test plugin throws on purpose, so the error boundary
+the host places around every contribution is visible rather than described.
+
+<RegistryDemo />
+
+## Per-plugin identity
+
+`usePluginId` is in the API because it is the one thing only the library knows
+while a contribution renders: which plugin's entry the host is on. Every
+per-plugin facility an application wants — a store, a prefixed logger, a
+settings namespace, a telemetry tag — hangs off it.
+
+```tsx twoslash
+// [!include ~/snippets/failure-isolation-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/failure-isolation-guide.tsx:plugin-id]
+```
+
+## What you give up
+
+A plugin's contributions no longer share a React subtree, so they no longer
+share ordinary `useState`. Two contributions of one plugin are two separate
+places in the tree that happen to carry the same `pluginId`.
+
+That is the real cost of the declarative channel, and it has a
+straightforward answer: a store, keyed per plugin. See
+[Plugin state](/state) for redux and mobx, both assembled from the catalog
+before render.
+
+## What it does not do, on purpose
+
+**No `when` predicate.** Visibility has exactly one mechanism: the contribution
+returns `null`. The cost is that a host cannot know how many contributions
+produced *output* — its children render when nothing is *contributed*, which is
+not the same thing. See [empty states](/recipes#empty-states).
+
+**No exclusive slots and no routing.** "Exactly one owner" is a routing problem,
+not a slot problem. Keep the claim in the manifest as an application field and
+[resolve it into one table before render](/recipes#exclusive-claims), where your
+code knows the actual keys and can report the plugin it refused.
+
+**No inventory helper.** The inventory exists because the manifest *is* data:
+[it is a `.map`](/recipes#inventory).
+
+**No state, no lifecycle, no command registry.** The library knows who
+contributes what, in what order, and what happens when it breaks. Everything
+else is yours, and the manifest is open data you can
+[extend with your own fields](/state).
+
+## Next
+
+- [Server rendering](/server-rendering) — the SSR contract, RSC and streaming
+- [Failure isolation](/failure-isolation) — `onError`, `renderFailed`, `reset`
+- [Plugin state](/state) — stores assembled from the catalog
+- [Performance](/performance) — what a re-render costs, and the two rules
+- [Examples](/examples) — one CRM, three shells

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 28" width="168" height="28" role="img" aria-label="create-slot">
+  <g transform="translate(0 4)">
+    <rect x="5" y="1" width="15" height="3.5" rx="1.75" fill="#a1a1aa"/>
+    <rect x="1" y="7.25" width="19" height="3.5" rx="1.75" fill="#7c3aed"/>
+    <rect x="5" y="13.5" width="15" height="3.5" rx="1.75" fill="#a1a1aa"/>
+  </g>
+  <text x="30" y="20" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="600" letter-spacing="-0.4" fill="#18181b">create-slot</text>
+</svg>

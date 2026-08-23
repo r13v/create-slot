@@ -24,3 +24,13 @@ dist-ssr
 *.sw?
 .aider*
 .env
+
+# Next.js
+.next
+next-env.d.ts.timestamp
+
+# TypeScript
+*.tsbuildinfo
+
+# Vocs/waku generated route types
+docs-site/src/pages.gen.ts

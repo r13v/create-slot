@@ -1,0 +1,25 @@
+{
+  "name": "crm-spa",
+  "version": "0.0.0",
+  "private": true,
+  "description": "create-slot in a client-rendered app: plugins are components, mounted as children of the shell.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "create-slot": "file:../..",
+    "crm-core": "*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2"
+  }
+}

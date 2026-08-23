@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "crm spa",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:spa"],
+      "port": 5173
+    },
+    {
+      "name": "crm nextjs pages",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:next-pages"],
+      "port": 3000
+    },
+    {
+      "name": "crm nextjs app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:next-app"],
+      "port": 3001
+    },
+    {
+      "name": "docs site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "site:dev"],
+      "port": 5174
+    }
+  ]
+}

@@ -1,0 +1,252 @@
+---
+title: API
+description: Every export of create-slot, with the types twoslash infers from the real package.
+showAskAi: false
+---
+
+# API
+
+One entry point, five runtime exports. Hover any identifier below — the types
+come from the published package, not from prose.
+
+```ts
+import {
+  createSlot,
+  definePlugin,
+  defineSlot,
+  PluginProvider,
+  usePluginId,
+} from "create-slot"
+```
+
+| Export | Channel | What it is |
+| --- | --- | --- |
+| [`defineSlot`](#defineslot) | both | Creates a named slot: `Host`, `contribute`, `Fill`, `useProps`. |
+| [`definePlugin`](#defineplugin) | declarative | Identity plus an `id` check. Your own fields keep their types. |
+| [`PluginProvider`](#pluginprovider) | declarative | Builds the index from the plugin array, during render. |
+| [`usePluginId`](#usepluginid) | declarative | Which plugin's contribution is rendering. |
+| [`createSlot`](#createslot) | runtime | The 2.x façade: `defineSlot` under a generated name. |
+
+Everything that can throw is listed on one page, with its cause and its fix —
+see [Errors](/errors).
+
+## `createSlot`
+
+The [runtime channel](/channels) under the names 2.x published. `createSlot()`
+is `defineSlot` under a generated name; the `Slot` it returns *is* the fill.
+
+```tsx twoslash
+// [!include ~/snippets/api-create-slot.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/api-create-slot.tsx:factory]
+//    ^?
+```
+
+### `<Slot order?>`
+
+The component itself is the contributor. It renders nothing where it sits and
+takes exactly one element as its child.
+
+```tsx twoslash
+// [!include ~/snippets/api-create-slot.tsx:prelude]
+// [!include ~/snippets/api-create-slot.tsx:factory]
+// [!include ~/snippets/api-create-slot.tsx:use-props]
+// ---cut---
+// [!include ~/snippets/api-create-slot.tsx:fill]
+```
+
+| prop | type | notes |
+| --- | --- | --- |
+| `children` | `ReactElement` | Required. Exactly one element — [not text, not siblings](/errors#a-fill-expects-a-single-react-element-as-its-child). |
+| `order` | `number` | Defaults to `0`. [Read once, on mount](/ordering#read-once). |
+
+Both are also the React key's source: the key is assigned on mount and kept, so
+changing the child's *content* reconciles instead of remounting.
+
+### `<Slot.Host {...props}>`
+
+```tsx twoslash
+// [!include ~/snippets/api-create-slot.tsx:prelude]
+// [!include ~/snippets/api-create-slot.tsx:factory]
+// ---cut---
+// [!include ~/snippets/api-create-slot.tsx:host]
+```
+
+### `Slot.useProps()`
+
+```tsx twoslash
+// [!include ~/snippets/api-create-slot.tsx:prelude]
+// [!include ~/snippets/api-create-slot.tsx:factory]
+// ---cut---
+// [!include ~/snippets/api-create-slot.tsx:use-props]
+```
+
+Unlike `defineSlot`'s `useProps`, this one is not nullable: a `Slot`'s children
+only ever render inside a host, so the façade can promise the props.
+
+## `defineSlot`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:define-slot]
+//    ^?
+```
+
+A slot's five members split cleanly by channel:
+
+| member | channel | server-rendered |
+| --- | --- | --- |
+| `contribute` | declarative | yes |
+| `Fill` | runtime | no |
+| `Host` | both | — |
+| `useProps` | both | — |
+| `name` | — | — |
+
+The name must be non-empty: the registry keys contributions by name, so an
+empty one is two slots quietly sharing a bucket.
+
+### `slot.contribute(spec)`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// [!include ~/snippets/api-registry.tsx:define-slot]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:contribute]
+//    ^?
+```
+
+| field | type | notes |
+| --- | --- | --- |
+| `component` | `ComponentType<Props>` | Receives the host's props as its own. May accept fewer; never different ones. |
+| `order` | `number` | Defaults to `0`. A priority, not an array index — see [Ordering](/ordering). |
+
+The return value is plain data — `{ slot, order, component }` — which is what
+lets a server render enumerate it. `contribute` hands back the component you
+passed, untouched; the memoised view of it belongs to the host.
+
+### `slot.Host`
+
+Renders every contribution to the slot, in order.
+
+| prop | type | notes |
+| --- | --- | --- |
+| `...props` | `Props` | The slot's type parameter. Held steady by value between renders. |
+| `children` | `ReactNode` | The placeholder. Renders only while nothing is contributed, and is never forwarded to a contribution. |
+
+Any number of hosts for one slot may be mounted at once; each renders the same
+contributions with its own props. A host outside a `PluginProvider`
+[throws](/errors#slot-host-rendered-outside-of-pluginprovider) — except
+`createSlot`'s, which tolerates a missing one.
+
+### `slot.Fill`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// [!include ~/snippets/api-registry.tsx:define-slot]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:fill]
+```
+
+| prop | type | notes |
+| --- | --- | --- |
+| `children` | `ReactElement` | Required. Exactly one element. |
+| `order` | `number` | Defaults to `0`. Read once, on mount. |
+
+Registers from an effect, so it never reaches server markup, and unregisters
+when it unmounts — from every host of that slot at once.
+
+### `slot.useProps()`
+
+Returns `Props | null`. Null means no host above, which a `Fill` element cannot
+rule out. A declared contribution does not need it: the host's props arrive as
+its own.
+
+## `definePlugin`
+
+Identity plus a non-empty-`id` check — and the one place where the plugin system
+is discoverable in a codebase. It is generic over its argument, so your own
+fields keep their types.
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// [!include ~/snippets/api-registry.tsx:define-slot]
+// [!include ~/snippets/api-registry.tsx:contribute]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:define-plugin]
+//           ^?
+```
+
+The library reads `id` and `contributes`. Everything else on the object is
+yours; see [Plugin state](/state).
+
+## `PluginProvider`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// [!include ~/snippets/api-registry.tsx:define-slot]
+// [!include ~/snippets/api-registry.tsx:contribute]
+// [!include ~/snippets/api-registry.tsx:define-plugin]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:provider]
+```
+
+| prop | type | notes |
+| --- | --- | --- |
+| `plugins` | `readonly PluginDefinition[]` | Already filtered by the application. Must match between server and client. |
+| `onError` | `(error: PluginError) => void` | Reports a contribution that threw. |
+| `renderFailed` | `(state: PluginError & { reset }) => ReactNode` | Rendered in place of the contribution. No automatic reset. |
+
+In development the provider reports duplicate plugin ids, because an id becomes
+part of every contribution's React key. That is the only thing it checks about
+a manifest.
+
+## `usePluginId`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:use-plugin-id]
+```
+
+Throws outside a contribution rendered by a host.
+
+## Types
+
+All nine are exported from the same entry point.
+
+| Type | What it describes |
+| --- | --- |
+| `Slot<Props>` | What `createSlot` returns: the contributor, plus `Host` and `useProps`. |
+| `SlotDefinition<Props>` | What `defineSlot` returns: `name`, `Host`, `Fill`, `contribute`, `useProps`. |
+| `ContributionSpec<Props>` | The argument to `contribute`: `{ component, order? }`. |
+| `Contribution` | What `contribute` returns: `{ slot, order, component }`. Plain data. |
+| `ErasedComponent` | A contribution's component with its props erased, so one index holds every slot's. |
+| `PluginDefinition` | The two fields the library reads: `id`, `contributes?`. |
+| `PluginProviderProps` | `plugins`, `onError?`, `renderFailed?`, `children?`. |
+| `PluginError` | `{ pluginId, slot, error }` — what `onError` receives. |
+| `RenderFailed` | `(state: PluginError & { reset }) => ReactNode`. |
+
+`PluginDefinition` is the one to extend. `definePlugin` is generic over its
+argument, so an intersection type keeps every field of your own:
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:extend]
+//                  ^?
+```
+
+## Behavioural notes
+
+- A host with no contributions renders its own children.
+- When a fill unmounts, it is removed from every host.
+- Multiple hosts of one slot each render the same contributions; `useProps`
+  reflects the host doing the rendering.
+- `order` is a priority. Equal values are a stable tie, and a fill reads its
+  `order` once, on mount.
+- The runtime channel's store is module-level and keyed by slot name. Nothing in
+  it is ever read on the server, which is what makes that safe.
+- A host holds its props steady while their values are unchanged, and renders
+  each declared contribution through a memoised view of it. Keep the `plugins`
+  array stable — see [Performance](/performance).

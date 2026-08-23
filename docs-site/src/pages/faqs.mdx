@@ -1,0 +1,165 @@
+---
+title: FAQs
+description: React versions, multiple hosts, SSR, RSC, ordering ties, portals, testing, and the questions that come up once it is in a real application.
+showAskAi: false
+---
+
+# FAQs
+
+## Can one slot have several hosts?
+
+Yes, any number, mounted at once. Each renders the same contributions and hands
+them its own props — which is what makes one contribution adapt per row of a
+table. See [Slots, hosts & fills](/slots#many-hosts-one-contribution).
+
+## What renders when nothing is contributed?
+
+The host's own children. There is no separate placeholder API.
+
+Note the exact wording: children render while nothing is *contributed*, not
+while nothing produced *output*. Three contributions that all return `null` mean
+the host has contributions, so the placeholder stays hidden — and the container
+is genuinely empty, so [CSS covers it](/recipes#empty-states).
+
+## Does it work with server rendering?
+
+The [declarative channel](/registry) does, fully: contributions are in the HTML,
+with no effects on the render path. The only requirement is that the `plugins`
+array is the same, in the same order, on both sides.
+
+The runtime channel does not. A fill registers from an effect, and effects do not
+run on the server, so the markup carries each host's placeholder and the fills
+replace it after hydration. See [Server rendering](/server-rendering).
+
+## Two contributions with the same `order`?
+
+Both render. The tie is stable: a declared contribution beats a fill, then
+registration sequence decides. Nothing is overwritten and nothing is dropped —
+that was 2.x behaviour, and [3.0 removed it](/migrating#order-changed-meaning).
+
+## Why does `useProps()` return `null`?
+
+Because `defineSlot`'s `Fill` cannot promise that a host is above it. The
+`createSlot` façade narrows the same hook to `Props`, since a `Slot`'s children
+only ever render inside a host.
+
+Inside a *declared* contribution the hook works too — the host provides the
+context around it — but you do not need it: the host's props arrive as your
+component's own props, already narrowed.
+
+## How is this different from a portal?
+
+A portal moves DOM nodes. `create-slot` composes UI logically: the contribution
+is rendered by the host, inside the host's React tree, so it sees the host's
+context and its props. Nothing is relocated in the DOM after the fact.
+
+## How is this different from pushing elements through context?
+
+You are not maintaining an array of elements in a global context, and the host is
+not re-rendering the world when one feature changes. Contributions are indexed
+per slot, sorted once, and read with `useSyncExternalStore` on the runtime side.
+
+## Do I need `PluginProvider` for `createSlot`?
+
+No. That API never had one, so its host tolerates a missing provider and simply
+has no declared contributions. `defineSlot`'s host throws without one, because
+there a missing provider is a mistake worth reporting.
+
+## Can I use both channels in the same slot?
+
+Yes, and it is a supported shape rather than a migration step. They rank on the
+same `order`. See [Mixing them](/channels#mixing-them).
+
+## How do I make exactly one plugin own something?
+
+Not with a slot. "Exactly one owner" is a routing problem — resolve the claims
+into one table before render, where your code knows the keys and can report the
+plugin it refused. See [Exclusive claims](/recipes#exclusive-claims).
+
+## Can a contribution be conditional?
+
+Yes: return `null`. There is no `when` predicate, and a contribution is an
+ordinary component, so the condition can read hooks, context, a store or a flag —
+which a predicate in the manifest could not.
+
+## What does the library validate?
+
+That `defineSlot` and `definePlugin` get a non-empty name and id, that a fill's
+child is a single element, and — in development — that plugin ids are unique,
+because an id becomes part of every contribution's React key.
+
+Nothing else. Names, capabilities, routes and versions are your manifest's
+fields, so they are yours to check. Every message is listed on
+[Errors](/errors).
+
+## Does a plugin's contributions share state?
+
+On the runtime channel, yes: the feature is one subtree, so ordinary `useState`
+works. On the declarative channel, no — the contributions are separate places in
+the tree that carry the same `pluginId`, and a store takes the subtree's place.
+See [Plugin state](/state).
+
+## Does one feature's state change re-render the others?
+
+No, as long as the host's own props did not really change. The host compares its
+props by value and renders each declared contribution through a memoised view of
+it, so a hundred contributions do not re-render because a search box beside them
+took a keystroke.
+
+It asks two things of your application in return: keep the `plugins` array
+stable, and pass host props by value where you can. See
+[Performance](/performance).
+
+## Is a slot name a global?
+
+The runtime store is module-level and keyed by slot name, so yes, within one
+client. It is safe precisely because nothing in it is ever read on the server:
+two concurrent server renders cannot observe each other's registrations.
+
+Generated names are fine — one slot per table row, for instance. When the last
+fill and the last host for a name are gone, the store drops the bucket.
+
+## Which React versions work?
+
+18 and up, on any renderer. The only React API the library needs that 17 lacks
+is `useSyncExternalStore`. React is a peer dependency, and the package has no
+dependencies of its own.
+
+## Can a contribution use hooks, context and data fetching?
+
+Yes. A contribution is an ordinary component rendered by the host, inside the
+host's React tree, so every context above the host is above it too. A declared
+contribution is additionally wrapped in `Suspense`, so it may read a promise the
+layout never awaited — that is what makes per-contribution streaming work. See
+[Server rendering](/server-rendering#streaming).
+
+## Does it work with React Server Components?
+
+The registry itself is client-side code: `defineSlot` creates a context and
+`PluginProvider` uses `useMemo`, neither of which the `react-server` build
+exports. A server component that imports a manifest does not compile.
+
+Server *rendering* still works, because client components are rendered on the
+server. What changes is that the server sends plugin **ids** across a
+`"use client"` boundary and the client assembles the list. See
+[React Server Components](/server-rendering#react-server-components).
+
+## How do I test a contribution?
+
+Render the component directly with the props the host would give it — no
+provider needed. To test the wiring, render the host inside a `PluginProvider`
+and assert on the output. See [Testing](/recipes#testing-a-contribution).
+
+## What happens if a contribution throws?
+
+A declared one is caught by the boundary the host places around it: `onError`
+reports it with the `pluginId` and the slot name, and `renderFailed` renders in
+its place. Recovery is the explicit `reset()` — there is no automatic retry.
+
+A runtime fill is not wrapped, on purpose: it is your own code in your own tree.
+See [Failure isolation](/failure-isolation).
+
+## Where do I find an error message?
+
+Every message the library throws or logs is on one page, with its cause and its
+fix — see [Errors](/errors). They all start with `[create-slot]`.

@@ -1,0 +1,99 @@
+---
+title: Overview
+description: A React plugin registry. Features declare UI contributions; the application decides where they render.
+showAskAi: false
+---
+
+import { SlotBasicsDemo } from "../components/slot-basics-demo"
+
+# create-slot
+
+**Features declare what they render. Layouts decide where it appears.**
+
+A feature contributes UI to a named slot. A layout mounts a host for that slot
+and gets every contribution, in order, with its own props. Neither side imports
+the other, and nothing is drilled through the tree to connect them.
+
+```bash
+npm install create-slot
+```
+
+## See it work
+
+Toggle a feature. It is mounted somewhere else entirely — the sidebar never
+imports it, and it never imports the sidebar. The host renders its own children
+until something is contributed, and every contributed item reads the host's
+live props.
+
+<SlotBasicsDemo />
+
+```tsx twoslash
+// [!include ~/snippets/quick-start.tsx:slots]
+
+// [!include ~/snippets/quick-start.tsx:host]
+
+// [!include ~/snippets/quick-start.tsx:fill]
+
+// [!include ~/snippets/quick-start.tsx:props]
+```
+
+## Two channels, one host
+
+A contribution can be registered in two ways, and the difference is what a
+contribution *is*.
+
+| | [Declarative](/registry) | [Runtime](/slots#the-runtime-channel) |
+| --- | --- | --- |
+| A contribution is | data plus a component | an element, from where it is mounted |
+| Registered | during render, from the plugin list | from an effect, while mounted |
+| In server HTML | yes | no |
+| Shared state inside one feature | a store | ordinary `useState` |
+| Wrapped in error + `Suspense` boundaries | yes | no |
+| API | `defineSlot`, `definePlugin`, `PluginProvider` | `createSlot`, or `slot.Fill` |
+
+Both feed the same host and rank on the same `order`, so a single application
+can use both: **declarative for anything that must be in the HTML, runtime for
+chrome that depends on live tree state.** [Two channels](/channels) is the whole
+comparison, with the decision written out.
+
+The declarative half of the same idea — a named slot, a plugin that declares a
+contribution, and a provider the application mounts once:
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+
+// [!include ~/snippets/registry-guide.tsx:plugin]
+
+// [!include ~/snippets/registry-guide.tsx:provider]
+```
+
+## What it does not do
+
+The library knows who contributes what, in what order, and what happens when a
+contribution breaks. Everything else is yours:
+
+- **No `when` predicate.** A contribution returns `null`.
+- **No exclusive slots and no routing.** "Exactly one owner" is a table your
+  application [resolves before render](/recipes#exclusive-claims), where it can
+  report the plugin it refused.
+- **No inventory helper.** The manifest *is* data, so an inventory is a `.map`.
+- **No state, no lifecycle, no command registry.** The manifest is open data you
+  [extend with your own fields](/state), and they keep their types.
+
+Zero dependencies, five runtime exports, and any React with
+`useSyncExternalStore` — 18 and up.
+
+## Where to go next
+
+1. **[Get started](/get-started)** — a first contribution in three steps.
+2. **[Slots, hosts & fills](/slots)** — the four words this library uses, and
+   what each one does.
+3. **[Plugin registry](/registry)** — the declarative channel end to end, and
+   what you need for [server rendering](/server-rendering).
+4. **[API](/api)** — five exports, with the types twoslash infers from the
+   published package.
+
+## Kudos
+
+The idea and the first implementation come from
+[Evgeniy Ivaha](https://github.com/ivahaev).

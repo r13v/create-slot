@@ -1,0 +1,115 @@
+---
+title: Use with AI agents
+description: Install the create-slot skill and point a coding agent at the current documentation instead of its training data.
+showAskAi: false
+---
+
+# Use with AI agents
+
+`create-slot` changed shape in 3.0: the [declarative channel](/registry) is now
+the primary one, and an agent working from its training data will reach for
+`createSlot` and an effect where the plugin registry belongs. The skill on this
+page fixes that. It tells a compatible coding agent to read the current
+documentation before it implements, reviews, debugs or explains create-slot
+code.
+
+The skill follows the open [Agent Skills](https://agentskills.io/) format. It is
+instructions for your agent — it does not install the `create-slot` package or
+touch your application.
+
+## Install the skill
+
+Run this from your project directory:
+
+```sh
+npx skills add r13v/create-slot --skill create-slot
+```
+
+Follow the CLI prompts to pick your agent and the installation method. Keep the
+default project scope when only this project uses create-slot.
+
+Add `--global` to make the skill available in every project:
+
+```sh
+npx skills add r13v/create-slot --skill create-slot --global
+```
+
+The command downloads the skill from the public
+[create-slot repository](https://github.com/r13v/create-slot/tree/main/skills/create-slot).
+Read `SKILL.md` before you install or update it — your agent follows whatever
+that file says.
+
+### Install without the CLI
+
+Copy the `skills/create-slot` directory from the repository into a skill
+directory your agent reads. For agents that follow the shared project
+convention, that is:
+
+```text
+.agents/skills/create-slot/SKILL.md
+```
+
+Check your agent's documentation if it uses a different path.
+
+## Use the skill
+
+A compatible agent can load the skill on its own when your request concerns
+create-slot. Name it in the request when you want it activated explicitly. There
+is no product-specific slash command to remember.
+
+For an implementation task:
+
+```text
+Use the create-slot skill. Add a "toolbar" slot to the invoice page and
+contribute an export button from the billing feature. It has to be in the
+server-rendered HTML.
+```
+
+For a review task:
+
+```text
+Use the create-slot skill. Review this feature for a runtime fill that should be
+a declared contribution, and for order values that only work by accident.
+```
+
+When the skill activates it sends the agent to the
+[LLM documentation index](https://r13v.github.io/create-slot/llms.txt) and tells
+it to treat that as the source of truth — which is what keeps it from answering
+from a pre-3.0 memory of the API.
+
+## Read the docs without a skill
+
+Both files are generated on every build and are plain text. Any agent, script or
+chat that can fetch a URL can use them directly:
+
+| File | Contents |
+| --- | --- |
+| [`llms.txt`](https://r13v.github.io/create-slot/llms.txt) | The index — every page with its one-line description. |
+| [`llms-full.txt`](https://r13v.github.io/create-slot/llms-full.txt) | Every page's full text in one file. |
+
+Start from `llms.txt` and fetch the pages you need. Reach for `llms-full.txt`
+when you would rather spend context than round trips, or when the agent cannot
+follow links. Every page is also served as plain Markdown under `/assets/md`,
+so one page costs one fetch — for example
+[`/assets/md/api.md`](https://r13v.github.io/create-slot/assets/md/api.md).
+
+## Verify the installation
+
+List what is installed:
+
+```sh
+npx skills list
+```
+
+Confirm `create-slot` appears for the agent you picked. Start a new session if
+the current one does not discover it, then send one of the requests above. If
+your agent shows its activity, check that it reads `SKILL.md` and the LLM
+documentation before it edits code.
+
+## Update the skill
+
+```sh
+npx skills update create-slot
+```
+
+Add `--global` if you installed it globally.

@@ -1,0 +1,25 @@
+{
+  "name": "crm-nextjs-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The same CRM plugins, server-rendered and streamed by the Next.js app router.",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "create-slot": "file:../..",
+    "crm-core": "*",
+    "next": "^16.3.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^6.0.3"
+  }
+}

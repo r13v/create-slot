@@ -1,0 +1,25 @@
+{
+  "name": "crm-nextjs-pages",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The same CRM plugins, server-rendered by the Next.js pages router.",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "create-slot": "file:../..",
+    "crm-core": "*",
+    "next": "^16.3.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^6.0.3"
+  }
+}

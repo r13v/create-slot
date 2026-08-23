@@ -1,0 +1,28 @@
+{
+  "name": "crm-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The CRM the Next.js examples share: domain data, slots, plugins and pages. The shells around it live in ../nextjs-pages and ../nextjs-app; ../spa shares the data and the stylesheet.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./data": "./src/data.ts",
+    "./crm.css": "./src/crm.css"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.12.0",
+    "create-slot": "file:../..",
+    "mobx": "^7.0.3",
+    "mobx-react-lite": "^5.0.3",
+    "react-redux": "^9.3.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "typescript": "^6.0.3"
+  }
+}
