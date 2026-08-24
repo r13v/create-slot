@@ -228,13 +228,21 @@ function useStableProps<Props extends object>(next: Props): Props {
 
 function sameValues(a: object, b: object): boolean {
   const keys = Object.keys(a)
+  const otherKeys = Object.keys(b)
 
-  if (keys.length !== Object.keys(b).length) {
+  if (keys.length !== otherKeys.length) {
     return false
   }
 
-  return keys.every((key) =>
-    Object.is((a as ErasedProps)[key], (b as ErasedProps)[key]),
+  // The names too, not the values alone: two props objects can carry the same
+  // number of keys, and `undefined` under every key they do not share, while
+  // being different props. Equal counts plus every name present on both sides
+  // is the same key set — and `includes` over a handful of props costs less
+  // than the set it would take to prove it in one pass.
+  return keys.every(
+    (key) =>
+      otherKeys.includes(key) &&
+      Object.is((a as ErasedProps)[key], (b as ErasedProps)[key]),
   )
 }
 

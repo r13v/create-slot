@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react"
 import type React from "react"
-import { Profiler, useState } from "react"
+import { Profiler, useEffect, useState } from "react"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -48,8 +48,11 @@ function reset(tally: Tally): void {
 /**
  * What a subtree actually cost, per commit.
  *
- * A component that re-renders only because its parent did leaves no other
- * trace, so the Profiler is the only witness that sees it.
+ * The Profiler reports work that was committed, which is not the same as work
+ * that was rendered: a component whose re-render produces what was already
+ * there commits nothing and is not reported. That is the number worth
+ * budgeting — it is the one the browser pays — but it means a zero here says
+ * "nothing reached the DOM", and the render tallies beside it say the rest.
  */
 function recorder() {
   const commits: string[] = []
@@ -475,36 +478,69 @@ describe("cost of scale", () => {
     expect(second.updates).toBe(0)
   })
 
-  it("keeps a rebuilt plugin list from re-rendering every contribution", () => {
+  it("stops a plugin list rebuilt on every render at the host", () => {
     const tally: Tally = {}
-    const manifest = plugins(tally, "perf-stable-manifest", 5)
-    const Toolbar = defineSlot<{ zoom: number }>("perf-stable-manifest")
+    const Toolbar = defineSlot<{ zoom: number }>("perf-rebuilt-manifest")
+    const host = recorder()
     const bump = trigger()
+    let mounts = 0
+
+    function Contribution() {
+      tally.c0 = (tally.c0 ?? 0) + 1
+
+      useEffect(() => {
+        mounts++
+      }, [])
+
+      return <li>c0</li>
+    }
+
+    // Held outside the render, so the only thing that can reach this subtree is
+    // the index arriving through context.
+    const hosted = (
+      <Profiler id="host" onRender={host.onRender}>
+        <ul>
+          <Toolbar.Host zoom={1} />
+        </ul>
+      </Profiler>
+    )
 
     function App() {
       const [n, setN] = useState(0)
 
       bump.hold(() => setN((v) => v + 1))
 
+      // `plugins={all.filter(isEnabled)}` — a fresh array, and fresh plugin
+      // objects in it, on every render. The index is memoised on the list by
+      // identity, so this is the case that regroups every single time.
+      const list = [
+        definePlugin({
+          id: "pricing",
+          contributes: [Toolbar.contribute({ component: Contribution })],
+        }),
+      ]
+
       return (
-        <PluginProvider plugins={manifest}>
+        <PluginProvider plugins={list}>
           <span data-testid="n">{n}</span>
-          <ul>
-            <Toolbar.Host zoom={1} />
-          </ul>
+          {hosted}
         </PluginProvider>
       )
     }
 
     render(<App />)
+    host.reset()
     reset(tally)
     bump.fire()
 
-    // The index is memoised on the plugin list by identity, so an application
-    // that rebuilds the array inline — `plugins={all.filter(enabled)}` — pays
-    // for a full regroup and re-renders every contribution. Holding the list
-    // steady is the whole cost of avoiding it.
+    // A new index reaches every host of every slot in it, so every one of them
+    // does re-render — and that is the whole bill. Below the host the entries
+    // are new objects, and still nothing happens: the memoised view is cached
+    // on the author's own component rather than on the entry, and the host
+    // holds its props by value, so no contribution renders again, none is torn
+    // down and mounted again, and the commit reaches nothing.
+    expect(host.updates).toBe(0)
     expect(tally.c0).toBe(0)
-    expect(tally.c4).toBe(0)
+    expect(mounts).toBe(1)
   })
 })

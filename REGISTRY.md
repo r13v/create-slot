@@ -131,8 +131,11 @@ The application must do two things:
 
 - **Keep the plugin list stable.** The library groups and ranks the index one
   time for each array identity. `plugins={all.filter(isEnabled)}` written inline
-  builds the index again, and re-renders each contribution, on each render of
-  the provider. Hold the list in a `useMemo` or in a module.
+  builds the index again on each render of the provider, and the new index
+  re-renders every host of every slot in it. The contributions themselves are
+  spared, because the memoised view is cached on your component and the host
+  holds its props by value, so those re-renders commit nothing. Hold the list in
+  a `useMemo` or in a module.
 - **Pass props by value when you can.** `zoom={1}` is cheap to compare.
   `style={{ zoom }}` is a new object each time and counts as a change, as it does
   for `memo`.
