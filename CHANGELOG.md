@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.1.0](https://github.com/r13v/create-slot/compare/v3.0.0...v3.1.0) (2026-08-24)
+
+
+### Features
+
+* enhance plugin contribution handling and improve runtime store management ([b247692](https://github.com/r13v/create-slot/commit/b247692cf9ce3dad801b5bb78a2ee181714eca2d))
+
+
+### Bug Fixes
+
+* isolate suspending runtime fills ([236f19f](https://github.com/r13v/create-slot/commit/236f19f87e27866c830cb117c317085a5d83bae0))
+
 ## [3.0.0](https://github.com/r13v/create-slot/compare/v2.2.1...v3.0.0) (2026-08-24)
 
 
