@@ -58,9 +58,10 @@ renders it.
 `createSlot` is a façade over exactly this: `createSlot()` is `defineSlot`
 under a generated name, and the `Slot` it returns *is* the `Fill`.
 
-This channel cannot reach server markup. Registration happens in an effect —
-the only honest moment, since the host has already rendered by the time a fill
-elsewhere in the tree gets to announce itself.
+This channel cannot reach server markup. Its server and first hydration
+snapshots are both empty: the client cannot reproduce fills from subtrees it has
+not reached yet without a mismatch. Registration therefore happens in an effect,
+after hydration.
 
 ## The comparison
 
@@ -70,11 +71,15 @@ elsewhere in the tree gets to announce itself.
 | Registered | during render, from the plugin list | from an effect, while mounted |
 | In server HTML | **yes** | no |
 | Needs `PluginProvider` | yes | no |
-| Stored in | the provider's index | a module-level store |
-| Error + `Suspense` boundary per contribution | placed by the host | none — bring your own |
+| Stored in | the nearest provider's index | a module-level store shared across React roots |
+| Host boundary per contribution | error + `Suspense` | `Suspense` with a `null` fallback |
 | One feature's contributions share `useState` | no — they are separate subtrees | yes — one subtree |
 | Reads host props via | its own props | `useProps()` |
 | Turning a feature off | filter the plugin array | stop rendering it |
+
+The runtime store belongs to the loaded copy of `create-slot`, not to a
+`PluginProvider`. Two roots using that copy address the same named slots; two
+providers still keep separate declarative indexes.
 
 ## What each choice costs
 

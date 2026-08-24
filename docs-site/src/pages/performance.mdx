@@ -74,8 +74,13 @@ This makes an unchanged host free; it never makes a changed one wrong.
 ```
 
 `contribute()` hands back the component you passed, untouched. The memoised view
-belongs to the host and is cached on your component, so rebuilding the index
-never remounts anything.
+belongs to the host and is cached on your component. With a fixed-shape
+`contributes` array, rebuilding the index keeps both the component and its
+positional key, so it does not remount.
+
+Keep each plugin's declaration order and length fixed. Inserting or removing an
+earlier entry shifts every later key. Put conditional visibility inside the
+component, or make independently enabled UI a plugin of its own.
 
 ## Runtime fills
 

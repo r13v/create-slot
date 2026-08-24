@@ -90,18 +90,22 @@ React reconciles the content and does not remount it.
 
 The runtime channel is the second choice for two reasons:
 
-- **You cannot render it on the server.** Registration occurs in an effect. This
-  is the only correct moment, because the host renders before a fill elsewhere
-  in the tree can announce itself. Server markup shows the host's placeholder.
-  The fill appears after hydration.
+- **You cannot render it on the server.** `getServerSnapshot` is empty both on
+  the server and during the first hydrating render. Even if a server prepass
+  collected fills, that first client render could not reproduce entries from
+  subtrees it has not reached yet; including them in the HTML would cause a
+  hydration mismatch. Registration therefore happens in an effect, after
+  hydration. Server markup shows the host's placeholder.
 - **A module-level store holds the fills**, keyed by slot name. The provider does
-  not hold them. This is safe because nothing on the server reads this store, so
-  two concurrent server renders cannot see each other's registrations. On the
-  client there is one store for each page. `create-slot` always worked this way.
+  not hold them. Every React root using the same loaded copy of `create-slot`
+  shares it; the declarative index, by contrast, belongs to its provider. This
+  is safe on the server because `getServerSnapshot` never reads the store.
 
-No error boundary and no `Suspense` boundary wrap a runtime fill. A fill is your
-own code in your own tree, not a third party's contribution. The isolation
-applies to third-party contributions only.
+A host wraps each runtime fill in `Suspense` with a `null` fallback. This keeps a
+suspending fill from hiding the subtree that registered it and entering a
+register/unregister loop. It is not third-party failure isolation: no error
+boundary or plugin identity is invented for a fill. Bring an inner `Suspense`
+for visible pending UI and your own error boundary for failures.
 
 ## The SSR contract
 
@@ -145,8 +149,11 @@ read only where the library isolates a contribution. Inline functions there neve
 reach a host.
 
 A contribution stays plain data. `contribute()` returns the component you gave,
-unchanged. The host owns the memoised view and caches it on your component, so a
-rebuild of the index never remounts a contribution.
+unchanged. With the same component and a fixed-shape `contributes` array, the
+host's positional key stays stable and an index rebuild does not remount it.
+Keep that array's order and length fixed: inserting or removing an earlier entry
+shifts every later key. Put conditional visibility inside the component, or make
+the independently enabled contribution a plugin of its own.
 
 ## React Server Components
 
@@ -317,8 +324,8 @@ is empty, because `setup` runs in an effect. Both appear shortly after hydration
 `npm run dev:spa` is the same CRM, built from `createSlot` alone. It has no
 manifest and no `PluginProvider`, and it mounts plugins as children of the shell,
 so a switch that disables one is a branch that stops rendering. It also shows the
-cost of the runtime channel: nothing wraps a fill, so its crash-test plugin must
-supply its own error boundary.
+cost of the runtime channel: no error boundary wraps a fill, so its crash-test
+plugin must supply one.
 
 `npm run dev:next-app` is the app router version. It produces the same HTML, plus
 a contribution whose data arrives in a later chunk, and the client boundary that

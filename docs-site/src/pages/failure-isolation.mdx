@@ -71,11 +71,15 @@ throw, clear, throw. The boundary sits directly around the contribution in the
 same commit, so React's own behaviour is enough — a button is the honest
 alternative to a loop.
 
-## Runtime fills are not wrapped
+## Runtime fills get only `Suspense`
 
-Nothing wraps a runtime fill — no error boundary and no `Suspense`. That is
-deliberate: a fill is your own code in your own tree, not a third party's
-contribution, and the isolation exists for the latter.
+A host wraps each runtime fill in `Suspense` with a `null` fallback. This is a
+safety boundary: without it, a suspended host can hide the subtree that
+registered the fill, remove that registration, reveal it and repeat forever.
+
+There is still no error boundary or plugin identity. A fill is your own code in
+your own tree, not a third party's contribution, so failure isolation remains
+yours. Add an inner `Suspense` when the pending state needs visible UI.
 
 ```tsx twoslash
 // [!include ~/snippets/failure-isolation-guide.tsx:prelude]
@@ -83,9 +87,9 @@ contribution, and the isolation exists for the latter.
 // [!include ~/snippets/failure-isolation-guide.tsx:runtime]
 ```
 
-If a fill can throw, bring your own boundary. The SPA example does exactly
-that — its crash-test feature ships one, because the runtime channel leaves it
-to you.
+If a fill can throw, bring your own error boundary. The SPA example does exactly
+that — its crash-test feature ships one, because the runtime channel leaves
+errors to you.
 
 ## Per-plugin identity
 

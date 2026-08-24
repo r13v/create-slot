@@ -27,9 +27,9 @@ The [declarative channel](/registry) does, fully: contributions are in the HTML,
 with no effects on the render path. The only requirement is that the `plugins`
 array is the same, in the same order, on both sides.
 
-The runtime channel does not. A fill registers from an effect, and effects do not
-run on the server, so the markup carries each host's placeholder and the fills
-replace it after hydration. See [Server rendering](/server-rendering).
+The runtime channel does not. Its server and first hydration snapshots are both
+empty; fills register from an effect after hydration, replacing each host's
+placeholder. See [Server rendering](/server-rendering).
 
 ## Two contributions with the same `order`?
 
@@ -113,8 +113,9 @@ stable, and pass host props by value where you can. See
 ## Is a slot name a global?
 
 The runtime store is module-level and keyed by slot name, so yes, within one
-client. It is safe precisely because nothing in it is ever read on the server:
-two concurrent server renders cannot observe each other's registrations.
+loaded copy of `create-slot`. Every React root using that copy shares the slot;
+the declarative channel remains scoped to its nearest `PluginProvider`. The
+store is safe on the server because `getServerSnapshot` never reads it.
 
 Generated names are fine — one slot per table row, for instance. When the last
 fill and the last host for a name are gone, the store drops the bucket.
@@ -156,8 +157,9 @@ A declared one is caught by the boundary the host places around it: `onError`
 reports it with the `pluginId` and the slot name, and `renderFailed` renders in
 its place. Recovery is the explicit `reset()` — there is no automatic retry.
 
-A runtime fill is not wrapped, on purpose: it is your own code in your own tree.
-See [Failure isolation](/failure-isolation).
+A runtime fill gets a `Suspense` boundary with a `null` fallback so suspension
+cannot tear down its own registration. It gets no error boundary: it is your own
+code in your own tree. See [Failure isolation](/failure-isolation).
 
 ## Where do I find an error message?
 

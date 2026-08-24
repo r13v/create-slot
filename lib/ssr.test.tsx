@@ -263,11 +263,10 @@ describe("registry SSR", () => {
       </PluginProvider>,
     )
 
-    // The store is one module-level object shared by every render in the
-    // process. Two concurrent server renders are only safe because none of them
-    // reads it — `getServerSnapshot` is empty by construction — and that is the
-    // same property that makes server markup a function of the plugin list
-    // alone, byte for byte, however busy the process around it is.
+    // The store belongs to this loaded copy of the module. Concurrent server
+    // renders are safe because none reads it — `getServerSnapshot` is empty by
+    // construction — and that is the same property that makes server markup a
+    // function of the plugin list alone, byte for byte.
     expect(second).toBe(first)
     expect(textOf(sharedSlot)).toBe("placeholder")
   })

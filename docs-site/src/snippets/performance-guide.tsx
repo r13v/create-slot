@@ -75,7 +75,7 @@ export function Held({ zoom, accent }: Settings) {
 // [!region contribution]
 // Still plain data. `contribute()` hands back the component you passed,
 // untouched; the memoised view belongs to the host and is cached on your
-// component, so rebuilding the index never remounts anything.
+// component. A fixed-shape manifest also keeps its positional key stable.
 export const search = definePlugin({
   id: "search",
   contributes: [Toolbar.contribute({ order: 10, component: SearchBox })],

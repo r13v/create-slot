@@ -53,9 +53,25 @@ const IndexContext = createContext<SlotIndex | null>(null)
 const HandlersContext = createContext<Handlers>(NO_HANDLERS)
 const PluginIdContext = createContext<string | null>(null)
 
-const isDev =
-  (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env
-    ?.NODE_ENV !== "production"
+// Keep the bare free variable and the whole diagnostic in one conditional:
+// bundlers replace this exact expression and can remove the unused function,
+// including its message, from production browser bundles.
+const reportDuplicatePluginIds: (plugins: readonly PluginDefinition[]) => void =
+  process.env.NODE_ENV !== "production"
+    ? (plugins) => {
+        const seen = new Set<string>()
+
+        for (const plugin of plugins) {
+          if (seen.has(plugin.id)) {
+            console.error(
+              `[create-slot] Duplicate plugin id "${plugin.id}": its contributions collide with the earlier plugin's React keys.`,
+            )
+          }
+
+          seen.add(plugin.id)
+        }
+      }
+    : () => {}
 
 /**
  * Groups contributions by slot and sorts each group once.
@@ -140,21 +156,7 @@ export function PluginProvider({
   // id becomes part of every contribution's React key. Anything else about a
   // plugin — names, capabilities, routes — is the application's to check.
   useEffect(() => {
-    if (!isDev) {
-      return
-    }
-
-    const seen = new Set<string>()
-
-    for (const plugin of plugins) {
-      if (seen.has(plugin.id)) {
-        console.error(
-          `[create-slot] Duplicate plugin id "${plugin.id}": its contributions collide with the earlier plugin's React keys.`,
-        )
-      }
-
-      seen.add(plugin.id)
-    }
+    reportDuplicatePluginIds(plugins)
   }, [plugins])
 
   return (

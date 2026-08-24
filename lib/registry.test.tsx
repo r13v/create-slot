@@ -543,8 +543,8 @@ describe("registry isolation", () => {
       throw new Error("runtime boom")
     }
 
-    // Only the declarative channel is wrapped in a boundary: a fill's element
-    // is rendered as it was given. Whoever mounts one owns its failures.
+    // A runtime fill gets a Suspense boundary, but no error boundary: whoever
+    // mounts one still owns its failures.
     expect(() =>
       render(
         <PluginProvider plugins={[]} renderFailed={() => <li>failed</li>}>
@@ -886,7 +886,7 @@ describe("registry identity and manifests", () => {
     expect(Object.keys(plugin.routes)).toEqual(["/pricing"])
   })
 
-  it("leaves the duplicate id check out of a production build", async () => {
+  it("skips the duplicate id check when NODE_ENV is production", async () => {
     vi.stubEnv("NODE_ENV", "production")
     vi.resetModules()
 
@@ -1319,6 +1319,65 @@ describe("registry channels", () => {
     expect(items()).toEqual(["outer", "inner"])
   })
 
+  it("keeps a suspending fill from hiding its host and unregistering itself", async () => {
+    const Menu = defineSlot("channels-suspending-fill")
+    let resolved = false
+    let release!: () => void
+    let attempts = 0
+
+    const pending = new Promise<void>((resolve) => {
+      release = () => {
+        resolved = true
+        resolve()
+      }
+    })
+
+    function Slow() {
+      attempts++
+
+      // If the host's outer boundary catches this promise, hiding it also
+      // unmounts the Fill that registered Slow. The resulting delete/set loop
+      // is synchronous, so cap it to make a regression fail instead of hanging
+      // the whole test process.
+      if (attempts > 20) {
+        throw new Error("A suspending fill kept unregistering itself")
+      }
+
+      if (!resolved) {
+        throw pending
+      }
+
+      return <li>slow</li>
+    }
+
+    render(
+      <PluginProvider plugins={[]}>
+        <React.Suspense fallback={<p>whole host is loading</p>}>
+          <ul>
+            <Menu.Host>
+              <li>placeholder</li>
+            </Menu.Host>
+          </ul>
+          <Menu.Fill>
+            <Slow />
+          </Menu.Fill>
+          <Menu.Fill>
+            <li>eager</li>
+          </Menu.Fill>
+        </React.Suspense>
+      </PluginProvider>,
+    )
+
+    // The host stays mounted and useful while only the slow fill is pending.
+    expect(screen.queryByText("whole host is loading")).toBeNull()
+    expect(items()).toEqual(["eager"])
+    expect(attempts).toBeLessThan(20)
+
+    await act(async () => release())
+
+    expect(items()).toEqual(["slow", "eager"])
+  })
+
   it("fails fast when a fill is mounted inside its own host's placeholder", () => {
     silenceConsole()
     collectRecoveries()
@@ -1364,9 +1423,9 @@ describe("registry channels", () => {
 
     expect(items()).toEqual(["placeholder"])
 
-    // The runtime store is one module-level object, so a slot name is shared
-    // by the whole process — two roots on one page, or a widget mounted beside
-    // an application, address the same slot.
+    // The runtime store is one module-level object, so a slot name is shared by
+    // every React root using this loaded copy of the package — a widget mounted
+    // beside an application addresses the same slot.
     render(
       <PluginProvider plugins={[]}>
         <Menu.Fill>

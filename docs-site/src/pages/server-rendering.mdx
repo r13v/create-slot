@@ -135,8 +135,11 @@ Wrap the registration in `startTransition`. See
 
 Two things, both by construction:
 
-- **Runtime fills.** Registration happens in an effect. Server markup shows the
-  host's placeholder, and the fill appears a moment after hydration.
+- **Runtime fills.** `getServerSnapshot` is empty on the server and during the
+  first hydrating render. Even if a server prepass collected fills, the client
+  could not reproduce entries from subtrees it has not reached yet without a
+  mismatch. Registration therefore happens in an effect; server markup shows
+  the host's placeholder, and the fill appears after hydration.
 - **Anything a `setup` function registers.** Same reason.
 
 Both are visible in the pages-router [example](/examples): view source and the

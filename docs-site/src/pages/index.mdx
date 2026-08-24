@@ -48,7 +48,7 @@ contribution *is*.
 | Registered | during render, from the plugin list | from an effect, while mounted |
 | In server HTML | yes | no |
 | Shared state inside one feature | a store | ordinary `useState` |
-| Wrapped in error + `Suspense` boundaries | yes | no |
+| Host boundary | error + `Suspense` | `Suspense` with a `null` fallback |
 | API | `defineSlot`, `definePlugin`, `PluginProvider` | `createSlot`, or `slot.Fill` |
 
 Both feed the same host and rank on the same `order`, so a single application

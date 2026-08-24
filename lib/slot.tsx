@@ -46,10 +46,10 @@ export type SlotDefinition<Props extends object> = {
    * Contributes an element for as long as this component is mounted, from
    * wherever in the tree it is mounted.
    *
-   * The runtime channel, and the reason it cannot be server-rendered: the
-   * host has already rendered by the time a fill elsewhere in the tree gets
-   * to announce itself. Prefer `contribute` unless the contribution genuinely
-   * is not known up front.
+   * The runtime channel is client-only: the server and hydration snapshots stay
+   * empty because the first client render cannot reproduce fills discovered
+   * later in the tree. Prefer `contribute` unless the contribution genuinely is
+   * not known up front.
    */
   Fill: React.FC<{ children: ReactElement; order?: number }>
   /** The surrounding host's props — how a `Fill` element reads them. */
@@ -103,7 +103,12 @@ export function buildSlot<Props extends object>(
                   props={props as unknown as ErasedProps}
                 />
               ) : (
-                merged.entry.element
+                // The element renders here, not where its Fill was written. If
+                // it suspends an outer boundary can otherwise hide that Fill,
+                // tear down its registration, reveal it, and repeat forever.
+                <Suspense key={merged.entry.key} fallback={null}>
+                  {merged.entry.element}
+                </Suspense>
               ),
             )}
       </PropsContext.Provider>
@@ -180,8 +185,8 @@ const isolated = new WeakMap<ErasedComponent, ComponentType<ErasedProps>>()
  *
  * Cached on the author's own component rather than applied in `contribute`,
  * because a contribution is plain data — that is what a server render
- * enumerates — and because a stable identity is what keeps rebuilding the
- * index from remounting everything.
+ * enumerates — and because a stable component identity keeps a fixed-shape
+ * index rebuild from remounting it.
  */
 function isolate(component: ErasedComponent): ComponentType<ErasedProps> {
   const cached = isolated.get(component)

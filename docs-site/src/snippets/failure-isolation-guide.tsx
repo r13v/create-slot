@@ -67,8 +67,8 @@ export const reporting = definePlugin({
 // [!endregion plugin-id]
 
 // [!region runtime]
-// Nothing wraps a runtime fill. It is your own code in your own tree, so bring
-// your own boundary when it can throw.
+// The host supplies only a null-fallback Suspense boundary. A runtime fill is
+// your own code, so bring your own error boundary when it can throw.
 export function RiskyChrome() {
   return (
     <Panels.Fill>

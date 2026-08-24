@@ -43,7 +43,8 @@ let nextSlotId = 0
  *
  * The same registry offers a second, declarative channel — `defineSlot`,
  * `definePlugin` and `PluginProvider` — which a server render can see. This one
- * cannot: a fill announces itself from an effect, long after the host rendered.
+ * cannot: its server and hydration snapshots stay empty because the first client
+ * render cannot reproduce fills that later subtrees have not registered yet.
  *
  * These names are the ones 2.x published, so they stay as they are, in the
  * older wording: here a `Slot` is the thing that contributes. The canonical
