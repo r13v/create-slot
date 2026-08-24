@@ -1,0 +1,133 @@
+---
+title: Plugin state
+description: The manifest is open data. Extend it with your own fields, and assemble state from the catalog before render.
+showAskAi: false
+---
+
+# Plugin state
+
+The library reads two fields — `id` and `contributes` — and nothing else. It has
+no state, no lifecycle and no command registry, on purpose: it knows who
+contributes what, in what order, and what happens when a contribution breaks.
+Everything else is yours.
+
+## Why a store at all
+
+On the [declarative channel](/channels) a plugin's contributions no longer share
+a React subtree, so they no longer share ordinary `useState`. Two contributions
+of one plugin are two separate places in the tree that happen to carry the same
+`pluginId`. A store takes the place of the shared subtree.
+
+On the [runtime channel](/slots#the-runtime-channel) the question does not
+arise: a feature that contributes through `Fill` is one subtree, so its parts
+share ordinary state and you need none of this page.
+
+## Extend the manifest
+
+`definePlugin` is generic over its argument, so your own fields keep their
+types. Declare your plugin shape once and let the library ignore the parts that
+are not its business.
+
+```tsx twoslash
+// [!include ~/snippets/state-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/state-guide.tsx:plugin-type]
+```
+
+Use `satisfies CrmPlugin` at each declaration rather than annotating the
+constant. The check still runs, and the literal keeps its exact type — which is
+what lets the application read a field back without a cast:
+
+```tsx twoslash
+// [!include ~/snippets/state-guide.tsx:prelude]
+// [!include ~/snippets/state-guide.tsx:plugin-type]
+// ---cut---
+// [!include ~/snippets/state-guide.tsx:satisfies]
+//                  ^?
+```
+
+## One rule
+
+**Assemble from the catalog before render. Never inject in an effect.**
+
+An effect does not run on the server, so state injected from one cannot be
+preloaded — and a plugin whose slice appears a commit after hydration is a
+layout shift at best and a mismatch at worst.
+
+## redux
+
+A plugin declares its `reducer`, and a `preload` for that slice's server-side
+initial state. The application combines slices from the **catalog**, not from
+the enabled list: a store whose shape depends on a toggle cannot be preloaded.
+
+```tsx twoslash
+// [!include ~/snippets/state-guide.tsx:prelude]
+// [!include ~/snippets/state-guide.tsx:plugin-type]
+// ---cut---
+// [!include ~/snippets/state-guide.tsx:redux]
+```
+
+The server sends the loaded state with the HTML and the client starts from it.
+
+## mobx
+
+A plugin declares `createStore`, and the application creates one instance per
+application instance — which on the server means per request. A contribution
+finds its own store through `usePluginId`, the only thing the library owes it.
+
+```tsx twoslash
+// [!include ~/snippets/state-guide.tsx:prelude]
+// [!include ~/snippets/state-guide.tsx:plugin-type]
+// ---cut---
+// [!include ~/snippets/state-guide.tsx:mobx]
+```
+
+This suits ephemeral, client-only state — a live call, an open dialog — which
+has nothing to serialise in the first place.
+
+## `setup` runs in an effect
+
+The library has no lifecycle, so a plugin that needs one declares it as a field
+and the application runs it. An effect is the right place: the plugin list is
+already known, and teardown is the returned function.
+
+Anything `setup` registers is absent from server markup by construction, and
+appears a moment after hydration. That is fine for commands, shortcuts and
+listeners. It has one trap:
+
+```tsx twoslash
+// [!include ~/snippets/state-guide.tsx:prelude]
+// [!include ~/snippets/state-guide.tsx:plugin-type]
+// ---cut---
+// [!include ~/snippets/state-guide.tsx:setup]
+```
+
+An urgent update reaching a `Suspense` boundary that has not hydrated yet makes
+React throw away the streamed HTML and re-render it on the client — *"This
+Suspense boundary received an update before it finished hydrating."* Wrapping
+the registration in `startTransition` is what keeps streamed markup intact. See
+[Streaming](/server-rendering#streaming) and [Errors](/errors).
+
+Two details in that hook are load-bearing:
+
+- **`plugins` is a dependency**, so the effect re-runs when the list changes and
+  the previous teardown runs first. Keep that array stable for the same reason
+  [`PluginProvider`](/performance#keep-the-plugin-list-stable) wants it stable.
+- **Teardown is collected outside the transition**, because the cleanup must run
+  synchronously when the component unmounts.
+
+## Reading state from a contribution
+
+A declared contribution gets the host's props, and nothing else. Everything
+per-plugin it needs — its slice, its logger, its settings namespace — it looks up
+by `usePluginId`, as `CallIndicator` does above.
+
+`usePluginId` throws outside a contribution rendered by a host, so a component
+that reads it cannot be mounted in the wrong place and quietly get somebody
+else's state. See [Errors](/errors#usepluginid-called-outside-of-a-plugin-contribution).
+
+## Next
+
+- [Recipes](/recipes) — resolving exclusive claims, building an inventory
+- [Server rendering](/server-rendering) — preloading state with the HTML
+- [Performance](/performance) — why the plugin array must stay stable

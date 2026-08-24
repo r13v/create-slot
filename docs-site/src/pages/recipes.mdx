@@ -1,0 +1,133 @@
+---
+title: Recipes
+description: Visibility, turning features off, per-row hosts, empty states, exclusive claims, an inventory and tests — the patterns the library deliberately leaves to you.
+showAskAi: false
+---
+
+# Recipes
+
+## Visibility
+
+There is no `when` predicate. A contribution decides for itself, with a plain
+`if`:
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:visibility]
+```
+
+The contribution is an ordinary component, so the condition can use hooks,
+context, a store or a feature flag. A predicate in the manifest could not — it
+would run outside React, before any of that exists.
+
+The cost is that the host cannot know how many contributions produced *output*.
+See [empty states](#empty-states) below.
+
+## Turning a feature off
+
+The two channels differ here, and both are one expression:
+
+- **Declarative** — filter the `plugins` array. Whatever decides it must produce
+  the same answer on the server and on the client; see
+  [the SSR contract](/server-rendering#the-contract-in-one-sentence).
+- **Runtime** — stop rendering the component that fills. Installing a feature is
+  mounting it, so uninstalling is `&&`.
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:toggle]
+```
+
+There is no `unregister` call in either case, and no array for the library to
+keep in sync with the tree.
+
+## One contribution, one host per row
+
+A slot can have any number of hosts mounted at once. Each renders the same
+contributions and hands them its own props, so one piece of code can opt out of
+one row and not the next.
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:per-host]
+```
+
+On the runtime channel the same pattern works through `useProps()`, which
+reflects the host doing the rendering rather than the place the element was
+written. See [Slots, hosts & fills](/slots#many-hosts-one-contribution).
+
+## Empty states
+
+A host renders its children while nothing is **contributed**, which is not the
+same as nothing producing **output**. If three contributions exist and all three
+return `null`, the host has contributions, so the placeholder does not render.
+
+This is the acknowledged cost of having exactly one visibility mechanism. It
+also has a one-line answer, because host wrappers that render nothing emit no
+DOM — so the container really is empty:
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:empty]
+```
+
+## Exclusive claims
+
+"Exactly one owner" — a saved view, a route, a settings page — is a routing
+problem, not a slot problem. Keep the claim in the manifest as an application
+field and resolve it into one table before render.
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:exclusive]
+```
+
+That check is stronger than anything the library could offer, because it knows
+the actual keys, it decides who wins, and it can **report** the plugin it
+refused instead of silently letting the last one win.
+
+## Inventory
+
+There is no inventory helper because the manifest *is* data. An inventory is a
+`.map` over an array your application owns.
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:inventory]
+```
+
+Useful for a plugin settings screen, a support diagnostic, or a test that
+asserts a release did not quietly drop a contribution.
+
+## Testing a contribution
+
+A contribution is an ordinary component, so the cheapest test renders it
+directly with the props the host would give it. No provider, no slot, no
+library involved.
+
+To test the wiring instead — that a plugin reaches the right slot, in the right
+place — render the host inside a provider and assert on the output:
+
+```tsx twoslash
+// [!include ~/snippets/testing-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/testing-guide.tsx:testing]
+```
+
+Two things worth asserting in a real suite, because both are silent when they
+break:
+
+- **The placeholder.** Render the host with `plugins={[]}` and assert the
+  children appear — that is the only signal that a slot name still matches.
+- **The inventory.** `describeCatalog` above turns the manifest into data a test
+  can compare against a snapshot, so a release cannot quietly drop a
+  contribution.
+
+A runtime fill needs one extra step: it registers from an effect, so assert
+after the effect has run rather than synchronously after the first render.

@@ -1,0 +1,224 @@
+/* Styling for the live demos only. Everything else is vocs' own theme. */
+
+.cs-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.cs-demo-stage {
+  border: 1px solid var(--vocs-border-color-primary);
+  border-radius: var(--vocs-radius-lg);
+  background-color: var(--vocs-background-color-surface);
+  padding: 1rem;
+}
+
+.cs-demo-stage-split {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 720px) {
+  .cs-demo-stage-split {
+    grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  }
+}
+
+.cs-demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cs-demo-divider {
+  width: 1px;
+  align-self: stretch;
+  background-color: var(--vocs-border-color-primary);
+}
+
+.cs-demo-label {
+  font-size: var(--vocs-text-sm);
+  font-weight: var(--vocs-font-weight-medium);
+  color: var(--vocs-text-color-muted);
+}
+
+.cs-demo-note {
+  font-size: var(--vocs-text-sm);
+  line-height: 1.55;
+  color: var(--vocs-text-color-muted);
+  margin: 0;
+}
+
+.cs-toggle,
+.cs-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--vocs-text-sm);
+  color: var(--vocs-text-color-primary);
+  cursor: pointer;
+}
+
+.cs-number {
+  cursor: default;
+  color: var(--vocs-text-color-muted);
+}
+
+.cs-number input,
+.cs-select {
+  font: inherit;
+  font-size: var(--vocs-text-sm);
+  color: var(--vocs-text-color-primary);
+  background-color: var(--vocs-background-color-primary);
+  border: 1px solid var(--vocs-border-color-primary);
+  border-radius: var(--vocs-radius-sm);
+  padding: 0.15rem 0.4rem;
+}
+
+.cs-number input {
+  width: 4.5rem;
+}
+
+.cs-panel {
+  min-width: 0;
+}
+
+.cs-panel-title {
+  margin: 0 0 0.6rem;
+  font-family: var(--vocs-font-family-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vocs-text-color-muted);
+}
+
+.cs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.cs-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--vocs-text-sm);
+  color: var(--vocs-text-color-primary);
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--vocs-radius-sm);
+  background-color: var(--vocs-background-color-surfaceMuted);
+}
+
+.cs-item-active {
+  font-weight: var(--vocs-font-weight-semibold);
+  color: var(--vocs-color-accent);
+}
+
+.cs-item-placeholder {
+  color: var(--vocs-text-color-muted);
+  font-style: italic;
+  background-color: transparent;
+  border: 1px dashed var(--vocs-border-color-primary);
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--vocs-radius-sm);
+  font-size: var(--vocs-text-sm);
+}
+
+.cs-chip,
+.cs-button {
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--vocs-radius-sm);
+  border: 1px solid var(--vocs-border-color-primary);
+  background-color: var(--vocs-background-color-primary);
+  color: var(--vocs-text-color-primary);
+  cursor: pointer;
+}
+
+.cs-chip-runtime {
+  border-style: dashed;
+  border-color: var(--vocs-color-accent);
+  color: var(--vocs-color-accent);
+  cursor: default;
+}
+
+.cs-card {
+  border: 1px solid var(--vocs-border-color-primary);
+  border-radius: var(--vocs-radius-md);
+  background-color: var(--vocs-background-color-surfaceMuted);
+  padding: 0.7rem 0.8rem;
+}
+
+.cs-card-title {
+  margin: 0 0 0.2rem;
+  font-size: var(--vocs-text-sm);
+  font-weight: var(--vocs-font-weight-semibold);
+}
+
+.cs-card p:last-child,
+.cs-failed span {
+  margin: 0;
+}
+
+.cs-muted {
+  font-size: var(--vocs-text-sm);
+  color: var(--vocs-text-color-muted);
+}
+
+.cs-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: var(--vocs-text-sm);
+  border: 1px solid var(--vocs-border-color-destructive-tint);
+  border-radius: var(--vocs-radius-md);
+  padding: 0.7rem 0.8rem;
+  color: var(--vocs-color-destructive);
+}
+
+.cs-log {
+  border: 1px solid var(--vocs-border-color-primary);
+  border-radius: var(--vocs-radius-md);
+  padding: 0.7rem 0.8rem;
+}
+
+.cs-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.cs-log ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-family: var(--vocs-font-family-mono);
+  font-size: 0.75rem;
+  color: var(--vocs-text-color-muted);
+}

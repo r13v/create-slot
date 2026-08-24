@@ -1,0 +1,253 @@
+---
+title: Errors
+description: Every message create-slot throws or logs, what causes it, and the fix — plus the type errors that catch the same mistakes before they run.
+showAskAi: false
+---
+
+# Errors
+
+The library throws in six places and logs in one. Every message starts with
+`[create-slot]`, so a search for that prefix finds all of them.
+
+Most of these mistakes are caught by TypeScript first. Where that is true, the
+type error is shown next to the runtime one.
+
+## Thrown errors
+
+### `'defineSlot' requires a non-empty name`
+
+The registry keys contributions by slot name. An empty name is two slots quietly
+sharing one bucket, so it is refused at the call.
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:slot-name]
+```
+
+Names are global to one client. Use a stable, application-wide string, and
+prefix names that a library exports.
+
+### `'definePlugin' requires a non-empty id`
+
+The id becomes part of every contribution's React key, so it has to identify the
+plugin.
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:plugin-id]
+```
+
+### `Slot host rendered outside of 'PluginProvider'`
+
+A host created with `defineSlot` reads the declared index from context. No
+provider means the application never mounted the registry, which is a mistake
+worth reporting rather than an empty slot.
+
+Mount `PluginProvider` above every host:
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:provider]
+```
+
+`createSlot`'s host is the exception. That API never had a provider, so it
+tolerates a missing one and simply has no declared contributions.
+
+### `A fill expects a single React element as its child`
+
+`Fill` clones its child to stamp a stable React key on it. A string, a number,
+an array or a fragment of siblings cannot carry one.
+
+```tsx twoslash
+// @errors: 2746
+import { defineSlot } from "create-slot"
+import type { ReactNode } from "react"
+
+const Toolbar = defineSlot("toolbar")
+declare function Save(): ReactNode
+declare function Undo(): ReactNode
+// ---cut---
+// Two children: throws at render.
+export function Broken() {
+  return (
+    <Toolbar.Fill>
+      <Save />
+      <Undo />
+    </Toolbar.Fill>
+  )
+}
+
+// One element that contains both.
+export function Fixed() {
+  return (
+    <Toolbar.Fill>
+      <>
+        <Save />
+        <Undo />
+      </>
+    </Toolbar.Fill>
+  )
+}
+```
+
+Text is the same case: wrap it in an element.
+
+### `'Slot' without children rendered`
+
+`createSlot`'s `Slot` is the contributor, so a `Slot` with nothing to contribute
+is always a mistake. TypeScript rejects it first:
+
+```tsx twoslash
+// @errors: 2741
+import { createSlot } from "create-slot"
+
+const Menu = createSlot<{ current: string }>()
+// ---cut---
+export function Broken() {
+  return <Menu order={10} />
+}
+```
+
+To contribute nothing, do not render the `Slot` at all — installing a runtime
+feature is mounting it, so uninstalling it is `&&`.
+
+### `'usePluginId' called outside of a plugin contribution`
+
+`usePluginId` reads a context the host provides around each **declared**
+contribution. It throws anywhere else, including inside a runtime fill, which
+belongs to no plugin.
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:use-plugin-id]
+```
+
+That throw is what makes the hook usable as a store key: it cannot silently
+return the wrong plugin.
+
+## Logged warnings
+
+### `Duplicate plugin id "x"`
+
+> `[create-slot] Duplicate plugin id "pricing": its contributions collide with
+> the earlier plugin's React keys.`
+
+Logged with `console.error` in development only, from an effect in
+`PluginProvider`. Two plugins that share an id produce two contributions with
+the same React key, so React keeps one and drops the other.
+
+This is the only thing the library checks about a manifest. Names, versions,
+capabilities and routes are your own fields, so they are yours to check — see
+[Recipes](/recipes#exclusive-claims).
+
+## Type errors
+
+These never reach runtime. They are listed because the message names a
+structural type, and the cause is easier to see in an example.
+
+### A prop the host does not have
+
+`defineSlot` with no type parameter declares a host with no props of its own.
+
+```tsx twoslash
+// @errors: 2322
+import { defineSlot } from "create-slot"
+
+const StatusBar = defineSlot("status-bar")
+// ---cut---
+export function Shell() {
+  return <StatusBar.Host label="Ready" />
+}
+```
+
+Declare the props on the slot, since they are the host's:
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:typed-slot]
+```
+
+### A contribution that asks for props the slot does not give
+
+A contribution receives the host's props as its own, so its parameter type must
+accept them.
+
+```tsx twoslash
+// @errors: 2322
+import { defineSlot } from "create-slot"
+
+const NavMenu = defineSlot<{ current: string }>("nav-menu")
+// ---cut---
+function PricingItem({ href }: { href: string }) {
+  return <li>{href}</li>
+}
+
+const contribution = NavMenu.contribute({ component: PricingItem })
+```
+
+A contribution may accept fewer props than the host provides — that is ordinary
+assignability — but never different ones.
+
+### `useProps()` is possibly null
+
+`defineSlot`'s `useProps` returns `Props | null`, because a `Fill` element cannot
+promise that a host is above it.
+
+```tsx twoslash
+// @errors: 18047
+import { defineSlot } from "create-slot"
+
+const NavMenu = defineSlot<{ current: string }>("nav-menu")
+// ---cut---
+function Item() {
+  const props = NavMenu.useProps()
+
+  return <li>{props.current}</li>
+}
+```
+
+Handle the null case:
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:use-props]
+```
+
+`createSlot`'s `useProps` is not nullable: a `Slot`'s children only ever render
+inside a host.
+
+## React errors you may see through this library
+
+### Hydration mismatch
+
+The server and the client were given different `plugins` arrays, or the same
+array in a different order. That list is the library's only SSR requirement —
+see [the SSR contract](/server-rendering#the-contract-in-one-sentence).
+
+Send the enabled ids with the HTML instead of recomputing them on the client.
+
+### `This Suspense boundary received an update before it finished hydrating`
+
+An urgent state update reached a streamed boundary that had not hydrated yet, so
+React discarded the streamed HTML and re-rendered it on the client.
+
+The usual source is a `setup` loop that registers commands from an effect. Wrap
+the registration in `startTransition` — see
+[Plugin state](/state#setup-runs-in-an-effect).
+
+### A missing key warning
+
+Not from this library. Both channels assign keys themselves: declared
+contributions get `pluginId#index`, and fills get a key stamped on the cloned
+element when they mount. A key warning points at a list of your own.
+
+## Next
+
+- [API](/api) — every export, with the types twoslash infers
+- [FAQs](/faqs) — the questions that come up in a real application

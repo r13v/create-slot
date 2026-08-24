@@ -1,0 +1,96 @@
+---
+title: Migrating to 3.0
+description: What changed, what did not, and how to move one feature onto the declarative channel.
+showAskAi: false
+---
+
+# Migrating to 3.0
+
+3.0 rebuilt the library as a plugin registry. `createSlot` is now a façade over
+that registry's runtime channel.
+
+## The published API is unchanged
+
+`createSlot`, `Slot`, `Slot.Host`, `Slot.useProps` and the `Slot<Props>` type are
+the names 2.x published, and they still mean what they meant. There is no
+codemod, no deprecation and nothing to rename.
+
+```tsx twoslash
+// [!include ~/snippets/migrating.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/migrating.tsx:unchanged]
+```
+
+## `order` changed meaning
+
+This is the one behavioural change, and it only ever makes previously-broken
+cases work.
+
+**Before.** `order` was an array index, so two fills that shared one silently
+replaced each other. Order bands and strides existed to make collisions
+unlikely.
+
+```tsx twoslash
+// [!include ~/snippets/migrating.tsx:prelude]
+// [!include ~/snippets/migrating.tsx:unchanged]
+// ---cut---
+// [!include ~/snippets/migrating.tsx:order-before]
+```
+
+**Now.** `order` is a real priority. Two fills that share one both render, in
+registration order.
+
+```tsx twoslash
+// [!include ~/snippets/migrating.tsx:prelude]
+// [!include ~/snippets/migrating.tsx:unchanged]
+// ---cut---
+// [!include ~/snippets/migrating.tsx:order-after]
+```
+
+So you can delete:
+
+- **order bands and strides** — a collision is no longer possible
+- **the duplicate-order detector** — same reason
+- **`resetKey`** — needed because a fill used to reach its host one commit late
+- **any per-host `setState` bookkeeping** built around the old store
+
+Read [Ordering](/ordering) for the full tie-break, including how a fill ranks
+against a declared contribution.
+
+## Two vocabularies, on purpose
+
+The registry's own API uses one canonical vocabulary — **slot** for the
+extension point, **host**, **contribution**, **fill**, declarative and runtime
+channels. `createSlot`'s published surface calls its contributor `Slot`.
+
+Both survive because the five names 2.2.1 published were left untouched, while
+the registry had not shipped yet and could be named freely. Two vocabularies in
+one package is the accepted price of not breaking existing imports.
+
+`createSlot` carries no `@deprecated` marker, and that is deliberate too: it is
+the right choice whenever a contribution genuinely is not known up front.
+
+## Moving a feature onto the declarative channel
+
+Worth doing when the contribution has to be in server HTML. The slot gains a
+name, the fill becomes a contribution, and the application gains a provider.
+
+```tsx twoslash
+// [!include ~/snippets/migrating.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/migrating.tsx:to-registry]
+```
+
+Three things to plan for:
+
+1. **The plugin array must match on the server and the client.** See
+   [the SSR contract](/server-rendering#the-contract-in-one-sentence).
+2. **Contributions of one plugin no longer share a React subtree**, so they no
+   longer share ordinary `useState`. A store takes its place — see
+   [Plugin state](/state).
+3. **A contribution receives the host's props as its own** instead of reading
+   them through `useProps`.
+
+You do not have to move everything. Both channels feed the same host and rank on
+the same `order`, so a mixed application is a supported shape, not a
+transitional state. See [Two channels](/channels#mixing-them).

@@ -1,0 +1,25 @@
+{
+  "name": "create-slot-docs-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vocs dev --port 5174",
+    "build": "vocs build",
+    "preview": "vocs preview --port 5174",
+    "typecheck": "tsc --project tsconfig.docs.json"
+  },
+  "dependencies": {
+    "create-slot": "file:..",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "^8.2.2",
+    "vocs": "^2.8.5",
+    "waku": "^1.0.0-beta.6"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "typescript": "6.0.3"
+  }
+}

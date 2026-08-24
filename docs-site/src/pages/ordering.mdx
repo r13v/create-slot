@@ -1,0 +1,110 @@
+---
+title: Ordering
+description: order is a priority, not an array index. Ties are stable, and a fill reads its order once.
+showAskAi: false
+---
+
+import { OrderingDemo } from "../components/ordering-demo"
+
+# Ordering
+
+Every contribution carries an `order`. Both channels rank on the same number,
+so a declared contribution and a runtime fill compete directly.
+
+## A priority, not an index
+
+`order` is a priority. Nothing is indexed by it, nothing is reserved, and two
+contributions may share one.
+
+Leave gaps — `10`, `20`, `30` — so a plugin can be slotted between two existing
+ones later without renumbering anything.
+
+```tsx twoslash
+// [!include ~/snippets/ordering-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/ordering-guide.tsx:priority]
+```
+
+`order` is a plain number, so the whole range is available:
+
+| Value | Meaning |
+| --- | --- |
+| omitted | `0` — the default for both `contribute()` and `Fill` |
+| negative | before everything that left `order` unset |
+| `10`, `20`, `30` | the useful convention: room to insert later |
+
+Nothing is reserved and nothing is indexed by it, so a value you never use costs
+nothing and a gap you never fill is not a hole in the output.
+
+## Ties are stable, and both render
+
+Two contributions that share one `order` both render. Neither replaces the
+other.
+
+```tsx twoslash
+// [!include ~/snippets/ordering-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/ordering-guide.tsx:tie]
+```
+
+The tie-break is deterministic, in this order:
+
+1. **`order`** — lower first.
+2. **Channel** — a declared contribution beats a fill. It is the one the server
+   also rendered, so the position it already occupies in the markup is the one
+   it keeps.
+3. **Registration sequence** — for declared contributions, the plugin's
+   position in the `plugins` array, then the position within that plugin's
+   `contributes`. For fills, the order in which they mounted.
+
+Every part of that is derived from data the application controls, so the same
+inputs always produce the same visual order — on the server and on the client.
+
+### A worked example
+
+Given `plugins={[search, filters, exportCsv]}` and one fill mounted at
+`order: 20`, the host renders this:
+
+| # | Contribution | `order` | Channel | Why it is here |
+| --- | --- | --- | --- | --- |
+| 1 | `SearchBox` | 10 | declared | lowest `order` |
+| 2 | `FilterMenu` | 20 | declared | `filters` is earlier in `plugins` than `exportCsv` |
+| 3 | `ExportButton` | 20 | declared | first in `exportCsv`'s `contributes` |
+| 4 | `ImportButton` | 20 | declared | second in `exportCsv`'s `contributes` |
+| 5 | the fill | 20 | runtime | a declared contribution wins a tie against a fill |
+
+Move `filters` after `exportCsv` in the array and rows 2–4 reorder. Change
+nothing and the result is byte-identical on every render, on both sides of a
+hydration.
+
+## Read once
+
+A **fill** reads its `order` once, when it mounts. Changing the value afterwards
+leaves the fill exactly where it is.
+
+```tsx twoslash
+// [!include ~/snippets/ordering-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/ordering-guide.tsx:read-once]
+```
+
+That is deliberate: the alternative is a contribution that jumps position while
+a user is looking at it. Pass the value that is already final, or remount the
+fill to apply a new one.
+
+A **declared** contribution has no such caveat. Its `order` lives in the plugin
+array, which the provider re-indexes whenever that array changes.
+
+## See both rules at once
+
+Change a declared order and the toolbar reorders immediately. Change the fill's
+order and nothing moves until you remount it.
+
+<OrderingDemo />
+
+## Before 3.0
+
+`order` used to be an array index, and two fills that shared one silently
+replaced each other. Order bands, strides and a duplicate-order detector all
+existed to work around that, and 3.0 deletes all of them. See
+[Migrating to 3.0](/migrating#order-changed-meaning).

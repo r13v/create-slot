@@ -1,0 +1,157 @@
+---
+title: Get started
+description: Install create-slot and contribute UI to a host from anywhere in the tree.
+showAskAi: false
+---
+
+# Get started
+
+Contribute your first piece of UI in three steps.
+
+## Pick the channel first
+
+`create-slot` delivers a contribution to a host in two ways, and the choice is
+the first thing to make, not the last:
+
+| | [Declarative](/registry) | [Runtime](#1-define-the-slot) |
+| --- | --- | --- |
+| API | `defineSlot`, `definePlugin`, `PluginProvider` | `createSlot` |
+| In server-rendered HTML | **yes** | no |
+| Needs a provider | yes | no |
+| Steps on this page | [the last section](#the-same-feature-declared) | the next three |
+
+:::warning
+**A runtime contribution is never in server-rendered HTML.** Registration
+happens in an effect, and effects do not run on the server: the markup carries
+each host's placeholder, and the contributions replace it after hydration.
+
+If the contribution is navigation, above-the-fold content, or anything a crawler
+reads, go to the [plugin registry](/registry) instead. That is what it exists
+for, and it is the primary channel.
+:::
+
+This page teaches the runtime channel, because it is the shortest path and needs
+no provider. [Two channels](/channels) is the full comparison.
+
+## Install
+
+```bash
+npm install create-slot
+```
+
+The package has no dependencies and one entry point. React is a peer
+dependency; anything with `useSyncExternalStore` works, so React 18 and up.
+
+## 1. Define the slot
+
+A slot is a name plus a props type. The props are the host's — whatever the
+place that renders contributions knows and the contributions might want.
+
+```tsx twoslash
+// [!include ~/snippets/quick-start.tsx:slots]
+```
+
+Define slots in their own module. It is the only thing both sides import, which
+is what keeps the feature and the layout from importing each other.
+
+## 2. Mount a host
+
+The host is where contributions render. Its own children are the placeholder:
+they render only while nothing is contributed, so an empty state costs no extra
+API.
+
+```tsx twoslash
+// [!include ~/snippets/quick-start.tsx:slots]
+// ---cut---
+// [!include ~/snippets/quick-start.tsx:host]
+```
+
+You can mount as many hosts for one slot as you like — one per row of a table,
+for instance. Each renders the same contributions, with its own props.
+
+## 3. Contribute from anywhere
+
+The slot component itself is the contributor. It renders nothing where it sits;
+it registers its child into the slot for as long as it is mounted.
+
+```tsx twoslash
+// [!include ~/snippets/quick-start.tsx:slots]
+// [!include ~/snippets/quick-start.tsx:props]
+// ---cut---
+// [!include ~/snippets/quick-start.tsx:fill]
+```
+
+`order` is a priority, not an array index. Leave gaps — `10`, `20`, `30` — so a
+feature can be inserted later without renumbering anything. See
+[Ordering](/ordering).
+
+## Read the host's props
+
+The contributed element is written next to the feature but rendered where the
+host is, so it reads the host's props through a hook rather than receiving them:
+
+```tsx twoslash
+// [!include ~/snippets/quick-start.tsx:slots]
+// ---cut---
+// [!include ~/snippets/quick-start.tsx:props]
+```
+
+That is what makes one contribution adapt to many hosts: `useProps` reflects the
+host doing the rendering, not the place the element was written.
+
+## Install the feature
+
+Installing a feature is mounting it. There is no registration call, no
+provider, and no array to keep in sync — switching a feature off is a `&&` that
+stops rendering it.
+
+```tsx twoslash
+// [!include ~/snippets/quick-start.tsx:slots]
+// [!include ~/snippets/quick-start.tsx:host]
+// [!include ~/snippets/quick-start.tsx:fill]
+// [!include ~/snippets/quick-start.tsx:props]
+// ---cut---
+// [!include ~/snippets/quick-start.tsx:app]
+```
+
+## The same feature, declared
+
+The declarative channel is the same three ideas — a slot, a host, a
+contribution — with one difference: the contribution is **data plus a
+component**, so a host can enumerate it during render and the server can put it
+in the HTML.
+
+Four changes to the code above:
+
+1. The slot gains a **name**: `defineSlot<Props>("nav-menu")`.
+2. The fill becomes a **contribution**: `NavMenu.contribute({ order, component })`.
+3. Contributions are grouped into a **plugin** with a unique `id`.
+4. The application mounts **`PluginProvider`** with the plugin list.
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+// ---cut---
+// [!include ~/snippets/registry-guide.tsx:plugin]
+```
+
+The contribution receives the host's props as its own, so there is no
+`useProps` in this version. Mount the provider once, above every host:
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+// [!include ~/snippets/registry-guide.tsx:plugin]
+// ---cut---
+// [!include ~/snippets/registry-guide.tsx:provider]
+```
+
+Both channels feed the same host and rank on the same `order`, so this is not a
+choice you make once for the whole application. See
+[Mixing them](/channels#mixing-them).
+
+## Next
+
+- [Slots, hosts & fills](/slots) — placeholders, multiple hosts, `useProps`
+- [Two channels](/channels) — the full comparison, with the decision written out
+- [Plugin registry](/registry) — the declarative channel end to end
+- [API](/api) — every export, with its inferred types
+- [Errors](/errors) — every message the library throws, and its fix

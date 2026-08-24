@@ -1,0 +1,167 @@
+---
+title: Slots, hosts & fills
+description: The four parts of a slot — a name, a host, a contribution and the host's props — and how they fit together.
+showAskAi: false
+---
+
+# Slots, hosts & fills
+
+Four words, used consistently everywhere in this library:
+
+- **Slot** — a named extension point. A name plus a props type, never a
+  component.
+- **Host** — the component that renders every contribution to one slot. Its own
+  children are the placeholder. A slot can have many hosts mounted at once.
+- **Contribution** — one piece of UI addressed to a slot, through either
+  channel.
+- **Fill** — the [runtime channel](/channels)'s contributor: the `Fill`
+  component, and the verb for what it does while mounted.
+
+## Defining a slot
+
+```tsx twoslash
+// [!include ~/snippets/slots-guide.tsx:define]
+```
+
+The name is the registry key, so it must be non-empty and unique across your
+application. Keep slot definitions in their own module: it is the only thing
+both the layout and the features import, which is what keeps them from
+importing each other.
+
+The type parameter is the **host's** props — whatever the place that renders
+contributions knows and a contribution might want. `children` is not part of
+it; children belong to the host.
+
+## Mounting a host
+
+```tsx twoslash
+// [!include ~/snippets/slots-guide.tsx:define]
+// ---cut---
+// [!include ~/snippets/slots-guide.tsx:host]
+```
+
+The host's children are the placeholder, and there is no separate API for one.
+They render while nothing is *contributed* — which is not the same as nothing
+producing output. A slot whose contributions all returned `null` has no
+children rendered and no DOM either, so the container really is empty; see
+[the empty-state recipe](/recipes#empty-states).
+
+A host without a `PluginProvider` above it throws. `createSlot`'s host is the
+exception — that API never had a provider, so it tolerates a missing one and
+simply has no declared contributions.
+
+## Contributing
+
+A declared contribution is an ordinary component. It receives the host's props
+as its own, and it decides its own visibility with a plain `if` — there is no
+`when` predicate to learn.
+
+```tsx twoslash
+// [!include ~/snippets/slots-guide.tsx:define]
+// ---cut---
+// [!include ~/snippets/slots-guide.tsx:contribution]
+```
+
+## The runtime channel
+
+`Fill` contributes an element from wherever it is mounted, for as long as it is
+mounted. The element is *written* next to the feature but *rendered* where the
+host is, so it reads the host's props through `useProps` rather than receiving
+them.
+
+```tsx twoslash
+// [!include ~/snippets/slots-guide.tsx:define]
+// ---cut---
+// [!include ~/snippets/slots-guide.tsx:fill]
+```
+
+Two things worth knowing:
+
+- `useProps` returns `Props | null`. A `Fill` element cannot promise that a host
+  is above it, so the null case is real and the types say so. (The
+  `createSlot` façade narrows it to `Props`, because a `Slot`'s children only
+  ever render inside a host.)
+- `order` and the element's React key are read once, on mount. Changing `order`
+  later leaves the fill in place; changing its *content* reconciles instead of
+  remounting. See [Ordering](/ordering#read-once).
+
+## Many hosts, one contribution
+
+A slot can have any number of hosts mounted at once. Each renders the same
+contributions, and each hands them its own props — which is what makes one
+contribution adapt per row.
+
+```tsx twoslash
+// [!include ~/snippets/slots-guide.tsx:define]
+// ---cut---
+// [!include ~/snippets/slots-guide.tsx:multiple-hosts]
+```
+
+One slot with many hosts is the usual shape, and the one shown here. The other
+shape — a slot *name* generated per row — also holds: when the last fill and the
+last host for a name are gone, the runtime store drops the bucket, so nothing
+accumulates as rows come and go.
+
+## Typing a slot
+
+The type parameter is the host's props. Three consequences follow, and all three
+are checked at the call site rather than at render:
+
+```tsx twoslash
+// @errors: 2322
+import { defineSlot } from "create-slot"
+// ---cut---
+// No type parameter: a host with no props of its own.
+const StatusBar = defineSlot("status-bar")
+
+// The host still takes `children` — the placeholder is not part of `Props`.
+const ok = <StatusBar.Host>Ready</StatusBar.Host>
+
+// Anything else is rejected.
+const bad = <StatusBar.Host label="Ready" />
+```
+
+A contribution's own parameter type has to accept what the host provides. It may
+accept less — that is ordinary assignability — but never something different:
+
+```tsx twoslash
+// @errors: 2322
+import { defineSlot } from "create-slot"
+
+const DealActions = defineSlot<{ dealId: string; stage: string }>(
+  "deal-actions",
+)
+// ---cut---
+// Fewer props than the host provides: fine.
+function ArchiveAction({ dealId }: { dealId: string }) {
+  return <button type="button">Archive {dealId}</button>
+}
+
+const archive = DealActions.contribute({ component: ArchiveAction })
+
+// A prop the host does not have: rejected.
+function BadAction({ href }: { href: string }) {
+  return <a href={href}>Open</a>
+}
+
+const bad = DealActions.contribute({ component: BadAction })
+```
+
+Hover `contribute` to see what it produces — plain data, which is what makes the
+declarative channel server-renderable:
+
+```tsx twoslash
+// [!include ~/snippets/slots-guide.tsx:define]
+// [!include ~/snippets/slots-guide.tsx:contribution]
+// ---cut---
+// [!include ~/snippets/slots-guide.tsx:contribute-data]
+//           ^?
+```
+
+## Next
+
+- [Two channels](/channels) — which channel a given contribution belongs on
+- [Plugin registry](/registry) — the declarative channel end to end
+- [Ordering](/ordering) — `order` as a priority, ties, and the read-once rule
+- [Recipes](/recipes) — per-row hosts, empty states, exclusive claims
+- [Errors](/errors) — every message the library throws, and its fix

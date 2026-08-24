@@ -1,0 +1,169 @@
+---
+title: Server rendering
+description: The one SSR requirement, what React Server Components force on a plugin registry, and how streaming works per contribution.
+showAskAi: false
+---
+
+# Server rendering
+
+The declarative channel exists for this. A contribution is data resolved during
+render, so it is in the HTML the server sends — no effects on the render path,
+nothing to wait for.
+
+## The contract, in one sentence
+
+**The `plugins` array must be the same, in the same order, on the server and on
+the client.**
+
+That is all the library asks. Everything else it needs is derived from that
+array during render.
+
+If the enabled set depends on a tenant, a user or a flag, it is data that has to
+travel with the HTML. Recomputing it on the client is how hydration breaks. The
+library's own test suite proves both directions: identical lists hydrate
+silently, and a different client list produces a mismatch.
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+```
+
+Declaring the order once, as a list of ids, is the cheapest way to keep both
+sides honest.
+
+## Rendering it, without a framework
+
+Nothing about the library is framework-specific. `renderToString` on the server
+and `hydrateRoot` on the client is the whole integration, and the only thing
+that has to cross between them is the list of ids:
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// [!include ~/snippets/server-rendering-guide.tsx:boundary]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:ssr]
+```
+
+The client reads the same ids back and builds the same array:
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// [!include ~/snippets/server-rendering-guide.tsx:boundary]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:hydrate]
+```
+
+Serialise ids, never plugins: a plugin holds components, which do not survive
+`JSON.stringify`. The catalog that maps an id back to a plugin is ordinary
+client code, imported by both entries.
+
+## React Server Components
+
+The registry is client-side code, and not by omission. `defineSlot` creates a
+context, `PluginProvider` uses `useMemo` and `useEffect`, and the `react-server`
+build of React exports none of those. So a plugin manifest — and every module
+that reaches one — belongs to the client graph, and a server component that
+imports it does not compile.
+
+That is not a limitation on server *rendering*. Client components are still
+rendered on the server, so the declarative channel still reaches the HTML. What
+changes is where the plugin list is assembled and what may cross the boundary.
+
+### The client boundary
+
+One `"use client"` module holds `PluginProvider` and imports the catalog itself.
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:boundary]
+```
+
+### A server component sends ids
+
+A component or a function cannot be a prop of a server component, so the server
+sends **ids** and the client assembles the list behind the boundary.
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// [!include ~/snippets/server-rendering-guide.tsx:boundary]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:server]
+```
+
+### The server seam
+
+Anything the *server* has to read about a plugin — a loader, a capability key —
+needs a module the server graph can import, separate from the manifest that
+points at it. The consequence is honest and worth stating: a plugin's
+server-side fields are declared twice, once as a manifest field the reader sees
+and once as an entry in the map the server reads. One implementation, two
+references. Deriving one from the other is exactly what RSC forbids.
+
+## Streaming
+
+`renderToPipeableStream` needs nothing extra from the library, and the
+per-contribution `Suspense` boundary is what makes it worthwhile: a slow
+contribution holds up its own line and nothing else. The shell — every other
+contribution, plus that one's fallback — goes out immediately, and the resolved
+contribution arrives in a later chunk with React's own swap script.
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:streaming]
+```
+
+### One thing to know before you try it
+
+**A state update during hydration destroys streamed HTML.** An application's
+`setup` loop typically registers commands in an effect, which fires while the
+page is still hydrating. An urgent update reaching a boundary that has not
+hydrated yet makes React discard the streamed markup and re-render it on the
+client — *"This Suspense boundary received an update before it finished
+hydrating."*
+
+Wrap the registration in `startTransition`. See
+[Plugin state](/state#setup-runs-in-an-effect).
+
+## What is missing from the HTML
+
+Two things, both by construction:
+
+- **Runtime fills.** Registration happens in an effect. Server markup shows the
+  host's placeholder, and the fill appears a moment after hydration.
+- **Anything a `setup` function registers.** Same reason.
+
+Both are visible in the pages-router [example](/examples): view source and the
+plugins' nav items, deal actions and panels are already there, while the status
+bar still shows its placeholder.
+
+## Failure, on the server
+
+`getDerivedStateFromError` never runs on the server, but the `Suspense` boundary
+the host places around every contribution still does its job: React marks just
+that boundary for a client render, keeps the rest of the markup, and the client
+re-renders that one contribution — where the class boundary finally catches it.
+One broken contribution costs its own line, not the page. See
+[Failure isolation](/failure-isolation#on-the-server).
+
+## A checklist before you ship
+
+1. The `plugins` array is built from data sent with the HTML, not recomputed.
+2. That array is memoised, so the index is not rebuilt on every provider render.
+3. Anything a `setup` loop registers is wrapped in `startTransition`.
+4. Every contribution that has to be in the markup is **declared**, not filled.
+5. A contribution that reads a promise expects its own `Suspense` fallback —
+   which the host already places — rather than the layout's.
+
+## Next
+
+- [Failure isolation](/failure-isolation#on-the-server) — what a throw costs here
+- [Plugin state](/state) — preloading a slice with the HTML
+- [Errors](/errors#hydration-mismatch) — the two React errors this page can cause
+- [Examples](/examples) — the same features under three shells

@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": [
+    "vocs.config.ts",
+    "src/components/**/*.tsx",
+    "src/snippets/**/*.ts",
+    "src/snippets/**/*.tsx"
+  ]
+}

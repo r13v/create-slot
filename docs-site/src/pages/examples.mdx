@@ -1,0 +1,77 @@
+---
+title: Examples
+description: One CRM, three shells — the same features rendered by a SPA, a Next.js pages router and the app router.
+showAskAi: false
+---
+
+# Examples
+
+One CRM whose features are plugins, built three times. The SPA is the
+[runtime channel](/channels) on its own; the two Next.js shells share
+`examples/crm-core` — the same manifest rendered by two different servers.
+
+```bash
+npm run dev:spa        # http://localhost:5173 — client-rendered, createSlot only
+npm run dev:next-pages # http://localhost:3000 — Next.js pages router, SSR
+npm run dev:next-app   # http://localhost:3001 — Next.js app router, RSC + streaming
+```
+
+## SPA — the runtime channel alone
+
+[`examples/spa`](https://github.com/r13v/create-slot/tree/main/examples/spa)
+
+No manifest, no plugin array and no provider: a plugin is a component that
+contributes, and installing it is mounting it as a child of the shell. Live
+toggles are `&&`. Per-row hosts hand the same fill different props.
+
+It is also where the runtime channel's cost is visible — nothing wraps a fill,
+so the crash-test feature has to bring its own error boundary.
+
+## Pages router — the registry, server-rendered
+
+[`examples/nextjs-pages`](https://github.com/r13v/create-slot/tree/main/examples/nextjs-pages)
+
+The same features declared up front, in the HTML the server sends. Run it and
+view source at `http://localhost:3000/deals?view=stale`:
+
+- the plugins' nav items, deal actions and panels are already in the markup;
+- the saved view has already been applied by the application's resolved table;
+- the pipeline card carries the target its `preload` fetched.
+
+Two things are missing from that HTML **on purpose**: the status bar shows its
+placeholder, because it is filled through the runtime channel, and the command
+list is empty, because `setup` runs in an effect. Both appear a moment after
+hydration.
+
+That page is the difference between the two channels, stated in markup instead
+of prose.
+
+## App router — RSC and streaming
+
+[`examples/nextjs-app`](https://github.com/r13v/create-slot/tree/main/examples/nextjs-app)
+
+The same HTML again, under React Server Components — where the manifest is
+client-side code by construction and the server sends **ids** instead of
+plugins. Five files' worth of integration, plus the thing the pages router
+cannot do: one slow contribution streams in on its own, after the rest of the
+page.
+
+See [Server rendering](/server-rendering#react-server-components) for why the
+client boundary is unavoidable.
+
+## Shared core
+
+[`examples/crm-core`](https://github.com/r13v/create-slot/tree/main/examples/crm-core)
+
+The features both Next.js shells mount, and where the patterns the library
+deliberately leaves to the application actually live:
+
+- `resolveViews` — [exclusive claims](/recipes#exclusive-claims), resolved into
+  one table before render, reporting the plugin it refused
+- `describeCatalog` — [an inventory](/recipes#inventory), which is a `.map`
+- redux slices combined from the catalog, with `preload` for server-side initial
+  state, and a mobx store per application instance — see
+  [Plugin state](/state)
+- `crm-core/server` — the **server seam**: plugin ids and per-request loaders in
+  a module the server graph can import, separate from the manifests that point
+  at it
