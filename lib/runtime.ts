@@ -35,11 +35,12 @@ const EMPTY: readonly RuntimeEntry[] = []
  * mode,
  * where a fill is discovered by mounting a component elsewhere in the tree.
  *
- * Nothing here can reach server markup — an effect is the only honest moment to
- * register from another subtree, and effects do not run on the server — so
- * `getServerSnapshot` always reports empty. That is also what makes a single
- * module-level store safe: two concurrent server renders cannot observe each
- * other's registrations, because neither one reads them.
+ * `getServerSnapshot` always reports empty. React reads it on the server and
+ * again during hydration, so server markup cannot contain fills that the first
+ * client render — before later subtrees register — cannot reproduce. Effects
+ * are where those subtrees register after hydration. The empty server snapshot
+ * also makes one module-level store safe: concurrent server renders never read
+ * each other's client registrations.
  */
 class RuntimeStore {
   private bySlot = new Map<string, Map<string, RuntimeEntry>>()

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -12,17 +12,12 @@ function items(): string[] {
 }
 
 afterEach(() => {
-  // Explicit, so the assertion below never depends on where the library's own
-  // auto-cleanup sits in the hook order.
-  cleanup()
   vi.restoreAllMocks()
-
-  // The store is one module-level object shared by this whole file: a test
-  // that leaves anything behind would be indistinguishable from a leak in the
-  // next one.
-  expect(trackedSlots()).toEqual({ entries: 0, snapshots: 0, listeners: 0 })
 })
 
+// Every test in the suite already ends with the store's own emptiness check,
+// in `test/setup-tests.ts`. What this file adds is the other half: what the
+// store held while the tree was still up.
 describe("runtime store", () => {
   it("holds nothing for a slot once its fills and hosts are gone", () => {
     const Menu = defineSlot("store-release")
@@ -155,6 +150,63 @@ describe("runtime store", () => {
         Array.from({ length: fills }, (_, i) => `fill ${fills - 1 - i}`),
       )
     }
+
+    unmount()
+  })
+
+  it("keeps one bucket per live slot name and no more", () => {
+    // Slot names are generated per row in a table, per tab, per widget: the
+    // store is indexed by name, so its size has to follow the live ones only.
+    const slots = Array.from({ length: 100 }, (_, i) =>
+      defineSlot(`store-scale-${i}`),
+    )
+
+    const { rerender, unmount } = render(
+      <PluginProvider plugins={[]}>
+        {slots.map((Slot, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed positions
+          <React.Fragment key={i}>
+            <ul>
+              <Slot.Host />
+            </ul>
+            <Slot.Fill>
+              <li>{`row ${i}`}</li>
+            </Slot.Fill>
+          </React.Fragment>
+        ))}
+      </PluginProvider>,
+    )
+
+    expect(items()).toHaveLength(100)
+    expect(trackedSlots()).toEqual({
+      entries: 100,
+      snapshots: 100,
+      listeners: 100,
+    })
+
+    // Half the rows leave: the store has to shrink with them, not just at the
+    // end when the whole tree goes.
+    rerender(
+      <PluginProvider plugins={[]}>
+        {slots.slice(0, 50).map((Slot, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed positions
+          <React.Fragment key={i}>
+            <ul>
+              <Slot.Host />
+            </ul>
+            <Slot.Fill>
+              <li>{`row ${i}`}</li>
+            </Slot.Fill>
+          </React.Fragment>
+        ))}
+      </PluginProvider>,
+    )
+
+    expect(trackedSlots()).toEqual({
+      entries: 50,
+      snapshots: 50,
+      listeners: 50,
+    })
 
     unmount()
   })

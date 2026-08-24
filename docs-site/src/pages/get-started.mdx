@@ -21,9 +21,10 @@ the first thing to make, not the last:
 | Steps on this page | [the last section](#the-same-feature-declared) | the next three |
 
 :::warning
-**A runtime contribution is never in server-rendered HTML.** Registration
-happens in an effect, and effects do not run on the server: the markup carries
-each host's placeholder, and the contributions replace it after hydration.
+**A runtime contribution is never in server-rendered HTML.** Its server and
+first hydration snapshots are intentionally empty. Registration happens in an
+effect after hydration, so the markup carries each host's placeholder and the
+contributions replace it on the client.
 
 If the contribution is navigation, above-the-fold content, or anything a crawler
 reads, go to the [plugin registry](/registry) instead. That is what it exists

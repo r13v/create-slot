@@ -137,7 +137,7 @@ For more, see the [slots guide](https://r13v.github.io/create-slot/slots), [orde
 
 ### Server rendering: the plugin registry
 
-A fill registers from an effect, and effects do not run on the server. The server sends the children of each host, and the fills replace them after hydration.
+A fill's server and first hydration snapshots are intentionally empty. It registers from an effect after hydration, so the server sends the children of each host and the fills replace them on the client.
 
 If the content must be in the HTML, use the plugin registry. A contribution is data, so a host can render it synchronously on the server:
 

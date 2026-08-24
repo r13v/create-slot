@@ -167,13 +167,6 @@ describe("registry SSR", () => {
     expect(reported.text).toMatch(/server|hydrat/i)
   })
 
-  it("produces the same markup for the same list in any environment", () => {
-    const first = renderToString(tree([pricing, reports]))
-    const second = renderToString(tree([pricing, reports]))
-
-    expect(first).toBe(second)
-  })
-
   it("leaves a runtime fill out of the server HTML, then adds it on the client", () => {
     const Menu = defineSlot("runtime-only")
 
@@ -190,14 +183,18 @@ describe("registry SSR", () => {
       </PluginProvider>
     )
 
+    const reported = collectReports()
     const html = renderToString(tree)
+
+    // Registering from a layout effect is what a server render complains
+    // about, and jsdom is exactly where the library has to choose: `window`
+    // exists here, and `renderToString` still has to pass in silence.
+    expect(reported.all).toEqual([])
 
     // The runtime channel is invisible to a server render by construction, so
     // the host ships its placeholder instead.
     expect(textOf(html)).toContain("placeholder")
     expect(textOf(html)).not.toContain("runtime")
-
-    const reported = collectReports()
 
     const { container } = hydrateInto(html, tree)
 
@@ -238,9 +235,12 @@ describe("registry SSR", () => {
     ).toEqual(["pricing in pricing (current)", "runtime", "reports"])
   })
 
-  it("keeps a fill registered on the client out of a later server render", () => {
+  it("renders the same markup whatever the client has registered", () => {
     const Menu = defineSlot("ssr-shared-store")
+    const first = renderToString(tree([pricing, reports]))
 
+    // A live client tree, putting fills into the module-level store in between
+    // the two server renders.
     render(
       <PluginProvider plugins={[]}>
         <ul>
@@ -252,10 +252,8 @@ describe("registry SSR", () => {
       </PluginProvider>,
     )
 
-    // The store is one module-level object shared by every render in the
-    // process. Two concurrent server renders are only safe because none of
-    // them reads it — `getServerSnapshot` is empty by construction.
-    const html = renderToString(
+    const second = renderToString(tree([pricing, reports]))
+    const sharedSlot = renderToString(
       <PluginProvider plugins={[]}>
         <ul>
           <Menu.Host>
@@ -265,7 +263,12 @@ describe("registry SSR", () => {
       </PluginProvider>,
     )
 
-    expect(textOf(html)).toBe("placeholder")
+    // The store belongs to this loaded copy of the module. Concurrent server
+    // renders are safe because none reads it — `getServerSnapshot` is empty by
+    // construction — and that is the same property that makes server markup a
+    // function of the plugin list alone, byte for byte.
+    expect(second).toBe(first)
+    expect(textOf(sharedSlot)).toBe("placeholder")
   })
 
   it("refuses a host outside the provider on the server too", () => {

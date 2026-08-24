@@ -245,8 +245,9 @@ argument, so an intersection type keeps every field of your own:
   reflects the host doing the rendering.
 - `order` is a priority. Equal values are a stable tie, and a fill reads its
   `order` once, on mount.
-- The runtime channel's store is module-level and keyed by slot name. Nothing in
-  it is ever read on the server, which is what makes that safe.
+- The runtime channel's store is module-level and keyed by slot name. React
+  roots using one loaded copy of the package share it; declared contributions
+  remain scoped to their provider. `getServerSnapshot` never reads the store.
 - A host holds its props steady while their values are unchanged, and renders
   each declared contribution through a memoised view of it. Keep the `plugins`
   array stable — see [Performance](/performance).

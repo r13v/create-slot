@@ -185,6 +185,57 @@ describe("registry streaming", () => {
     expect(errors).toEqual([])
   })
 
+  it("streams a contribution that brought no fallback of its own", async () => {
+    const Menu = defineSlot("streaming-no-fallback")
+    let value: string | null = null
+    let release!: () => void
+
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    }).then(() => {
+      // Not "late": React's own placeholder markup is a `<template>`, and a
+      // shell assertion has to be able to tell the two apart.
+      value = "arrived"
+    })
+
+    function Late() {
+      if (value === null) {
+        throw pending
+      }
+
+      return <li>{value}</li>
+    }
+
+    const slow = definePlugin({
+      id: "slow",
+      contributes: [Menu.contribute({ order: 0, component: Late })],
+    })
+
+    const quick = definePlugin({
+      id: "quick",
+      contributes: [
+        Menu.contribute({ order: 10, component: () => <li>quick</li> }),
+      ],
+    })
+
+    const { shell, full, errors } = await stream(
+      <PluginProvider plugins={[slow, quick]}>
+        <ul>
+          <Menu.Host />
+        </ul>
+      </PluginProvider>,
+      () => release(),
+    )
+
+    // Each contribution is wrapped in a `Suspense` of the host's own, so one
+    // that suspends with no fallback of its own holds up its line and not the
+    // slot: the shell ships without it, and its content streams in after.
+    expect(shell).toContain("quick")
+    expect(shell).not.toContain("arrived")
+    expect(full).toContain("arrived")
+    expect(errors).toEqual([])
+  })
+
   it("leaves a runtime fill out of a stream entirely", async () => {
     const Menu = defineSlot("streaming-runtime")
 

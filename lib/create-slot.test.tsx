@@ -498,4 +498,34 @@ describe("createSlot misuse", () => {
       )
     }
   })
+
+  it("keeps its own error when a fill's child stops being an element", () => {
+    silenceConsole()
+
+    const Menu = createSlot()
+    const Untyped = Menu as unknown as React.FC<{ children: unknown }>
+
+    function App({ bad }: { bad: boolean }) {
+      return (
+        <>
+          <ul>
+            <Menu.Host>
+              <li>placeholder</li>
+            </Menu.Host>
+          </ul>
+          <Untyped>{bad ? "text" : <li>ok</li>}</Untyped>
+        </>
+      )
+    }
+
+    const { rerender } = render(<App bad={false} />)
+    expect(items()).toEqual(["ok"])
+
+    // The check runs before the fill's own hooks, so a child that turns into
+    // something else mid-life is a render that calls fewer hooks than the last
+    // one. React's report of that would bury the reason it happened.
+    expect(() => rerender(<App bad={true} />)).toThrow(
+      "[create-slot] A fill expects a single React element as its child",
+    )
+  })
 })
