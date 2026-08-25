@@ -72,7 +72,7 @@ after hydration.
 | In server HTML | **yes** | no |
 | Needs `PluginProvider` | yes | no |
 | Stored in | the nearest provider's index | a module-level store shared across React roots |
-| Host boundary per contribution | error + `Suspense` | `Suspense` with a `null` fallback |
+| Host boundary per contribution | error + `Suspense`, `null` fallback | `Suspense` with a `null` fallback |
 | One feature's contributions share `useState` | no — they are separate subtrees | yes — one subtree |
 | Reads host props via | its own props | `useProps()` |
 | Turning a feature off | filter the plugin array | stop rendering it |

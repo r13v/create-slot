@@ -2,7 +2,12 @@
 "use client"
 
 // [!region prelude]
-import { defineSlot, type PluginDefinition, PluginProvider } from "create-slot"
+import {
+  definePlugin,
+  defineSlot,
+  type PluginDefinition,
+  PluginProvider,
+} from "create-slot"
 import { type ReactNode, use, useMemo } from "react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
@@ -99,3 +104,22 @@ export function PipelineCard({ dealId }: { dealId: string }) {
   return <article>Target: {target}</article>
 }
 // [!endregion streaming]
+
+// [!region deferred]
+// `renderToString` does not support `Suspense`, so a `React.lazy` component
+// never reaches the HTML there. It reaches the HTML only if the module is
+// already resolved when the plugin list is built. Resolve the import first,
+// then build the list from what it returned.
+const loadPanel = () => import("./panel")
+
+export async function buildPlugins(): Promise<PluginDefinition[]> {
+  const { default: DealPanel } = await loadPanel()
+
+  return [
+    definePlugin({
+      id: "notes",
+      contributes: [Panels.contribute({ order: 10, component: DealPanel })],
+    }),
+  ]
+}
+// [!endregion deferred]

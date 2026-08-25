@@ -35,6 +35,10 @@ _Avoid_: Static channel, static contributions
 from an effect while a component is mounted, so it never reaches server markup.
 _Avoid_: Dynamic channel, dynamic contributions
 
+**Deferred contribution**: A declared contribution whose component loads in a
+later bundle chunk. The manifest that declares it is never deferred.
+_Avoid_: Lazy contribution, async contribution, split contribution
+
 **Client boundary**: The `"use client"` module that holds `PluginProvider` and
 imports the manifests. Under React Server Components the registry can live
 nowhere else, so a server sends plugin **ids** across it and the client assembles

@@ -9,9 +9,12 @@ import {
   type PluginDefinition,
   PluginProvider,
 } from "create-slot"
-import { type ReactNode, useMemo } from "react"
+import { lazy, type ReactNode, Suspense, useMemo } from "react"
+
+import { StatusBar } from "./split-slots"
 
 const DealRow = defineSlot<{ dealId: string; selected: boolean }>("deal-row")
+const DealPanels = defineSlot<{ dealId: string }>("deal-panels")
 
 type DealView = { label: string; filter: string }
 
@@ -19,6 +22,7 @@ declare function useFeatureFlag(name: string): boolean
 declare const CATALOG: readonly PluginDefinition[]
 declare function DraftBadge(): ReactNode
 declare function AppShell(): ReactNode
+declare function Skeleton(): ReactNode
 // [!endregion prelude]
 
 // [!region per-host]
@@ -151,3 +155,63 @@ export function Toggles({
   )
 }
 // [!endregion toggle]
+
+// [!region split-facade]
+// A façade plugin is a module, so `lazy` moves all of it into its own chunk —
+// the fills with it. A plugin that is off is never mounted, so the browser never
+// requests its chunk.
+const TelephonyPlugin = lazy(() => import("./telephony-plugin"))
+
+export function Shell({ telephony }: { telephony: boolean }) {
+  return (
+    <>
+      {telephony && (
+        // The plugin renders nothing at its own position, so `null` is the
+        // correct fallback here.
+        <Suspense fallback={null}>
+          <TelephonyPlugin />
+        </Suspense>
+      )}
+
+      <footer>
+        {/* No fill is registered while the chunk loads, so the host shows this
+            placeholder instead of a gap. */}
+        <StatusBar.Host>
+          <span>Nothing has claimed the status bar</span>
+        </StatusBar.Host>
+      </footer>
+    </>
+  )
+}
+// [!endregion split-facade]
+
+// [!region split-declared]
+// Only the component is deferred. The manifest stays in the initial bundle,
+// because the application has to read it to filter and to build its state.
+// Bring your own `Suspense`: the host's boundary uses `fallback={null}`.
+const DealPanel = lazy(() => import("./panel"))
+
+export const notes = definePlugin({
+  id: "notes",
+  contributes: [
+    DealPanels.contribute({
+      order: 10,
+      component: (props) => (
+        <Suspense fallback={<Skeleton />}>
+          <DealPanel {...props} />
+        </Suspense>
+      ),
+    }),
+  ],
+})
+// [!endregion split-declared]
+
+// [!region split-trap]
+// This compiles, and it is shorter. It is also a gap: one deferred contribution
+// is still one entry, so the host skips its placeholder, and the host's own
+// boundary renders `null` until the chunk arrives.
+export const notesWithAGap = definePlugin({
+  id: "notes-with-a-gap",
+  contributes: [DealPanels.contribute({ order: 10, component: DealPanel })],
+})
+// [!endregion split-trap]

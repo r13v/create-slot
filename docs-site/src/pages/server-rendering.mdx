@@ -131,6 +131,51 @@ hydrating."*
 Wrap the registration in `startTransition`. See
 [Plugin state](/state#setup-runs-in-an-effect).
 
+## A deferred contribution
+
+A **deferred contribution** loads its component in a later bundle chunk. What
+the server produces for it depends on the render path, and the two paths behave
+differently.
+
+**`renderToPipeableStream` handles it.** The shell carries the contribution's
+own skeleton, and the body arrives in a later chunk. That is the mechanism
+[streaming](#streaming) already describes.
+
+**`renderToString` does not support `Suspense` at all.** React reports this
+itself. A `React.lazy` component therefore never reaches the HTML, and awaiting
+the loader first does not change it: `lazy` resolves in a microtask, and this
+render is synchronous.
+
+| What you wrote | What `renderToString` produces |
+| --- | --- |
+| `lazy`, plus the contribution's own `Suspense` | React marks the boundary for a client render and emits your fallback as placeholder markup. The content arrives after hydration. |
+| `lazy` on its own | React marks the boundary for a client render and emits nothing for that contribution. |
+
+A render that does not stream therefore has two answers. Either do not defer
+that contribution, or resolve its module before you build the `plugins` array:
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// [!include ~/snippets/server-rendering-guide.tsx:boundary]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:deferred]
+```
+
+The client has to build the list the same way. The contract is unchanged: the
+same plugins, in the same order, on both sides. A list the server awaited and
+the client did not is a different list.
+
+The pages router does not stream, so this is the shape it needs. The app router
+streams, and can defer.
+
+`React.lazy` splits the chunk, but it does not tell a framework which chunk a
+page needs. Next.js uses `next/dynamic` for that, and `component` accepts its
+result.
+
+See [splitting a declared
+contribution](/recipes#splitting-a-declared-contribution) for the client half.
+
 ## What is missing from the HTML
 
 Two things, both by construction:
@@ -163,6 +208,7 @@ One broken contribution costs its own line, not the page. See
 4. Every contribution that has to be in the markup is **declared**, not filled.
 5. A contribution that reads a promise expects its own `Suspense` fallback —
    which the host already places — rather than the layout's.
+6. Every deferred contribution is loaded before a render that does not stream.
 
 ## Next
 

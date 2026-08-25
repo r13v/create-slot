@@ -1,6 +1,6 @@
 ---
 title: Recipes
-description: Visibility, turning features off, per-row hosts, empty states, exclusive claims, an inventory and tests — the patterns the library deliberately leaves to you.
+description: Visibility, turning features off, code splitting, per-row hosts, empty states, exclusive claims, an inventory and tests — the patterns the library deliberately leaves to you.
 showAskAi: false
 ---
 
@@ -42,6 +42,82 @@ The two channels differ here, and both are one expression:
 
 There is no `unregister` call in either case, and no array for the library to
 keep in sync with the tree.
+
+## Splitting a plugin module
+
+A façade plugin is a module, so `lazy` moves all of it into one chunk. The fills
+move with it. A plugin that is off is never mounted, so the browser never
+requests its chunk.
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:split-facade]
+```
+
+While the chunk loads, the plugin has registered no fill. The slot has no
+contributions, so the host renders its own children. You get the placeholder you
+already wrote, not a gap.
+
+The runtime channel never reaches server markup, so SSR needs nothing more here.
+See [what is missing from the
+HTML](/server-rendering#what-is-missing-from-the-html).
+
+## Splitting a declared contribution
+
+On the declarative channel only the component moves. The manifest stays in the
+initial bundle, and it has to. The application reads it to filter the `plugins`
+array, and to assemble state before it renders. A contribution whose
+component loads in a later chunk is a **deferred contribution**.
+
+Give the contribution its own `Suspense` boundary. The host puts a boundary
+around every contribution, but that boundary uses `fallback={null}`.
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:split-declared]
+```
+
+Move the components. Keep in the manifest module everything the application
+reads before it renders:
+
+- a reducer, or a store factory
+- an exclusive claim, such as a saved view or a route
+- a `setup` function
+- a `preload` function
+
+A store whose shape depends on which plugins are on cannot be preloaded by a
+server that does not know the answer yet. See [Plugin state](/state).
+
+### The shorter form leaves a gap
+
+```tsx twoslash
+// [!include ~/snippets/recipes-guide.tsx:prelude]
+// [!include ~/snippets/recipes-guide.tsx:split-declared]
+// ---cut---
+// [!include ~/snippets/recipes-guide.tsx:split-trap]
+```
+
+One deferred contribution is still one entry in the slot. A host renders its
+`children` only while it has no contributions at all, so the placeholder does
+not appear. The host's own boundary renders `null`, and the slot stays empty
+until the chunk arrives.
+
+Use this form only when the contribution is small enough that nobody sees the
+gap.
+
+### What each render path produces
+
+| Render path | A chunk that is not loaded gives you |
+| --- | --- |
+| `renderToString` | Nothing you can use. It does not support `Suspense`, so React marks the boundary for a client render. Your own fallback becomes placeholder markup, and a contribution with no fallback emits nothing. |
+| `renderToPipeableStream` | The shell carries the skeleton. The body arrives in a later chunk. |
+| A client render | The skeleton, when the contribution has its own `Suspense`. Nothing, when it does not. |
+
+A render that does not stream cannot put a deferred contribution in the HTML at
+all. See [a deferred
+contribution](/server-rendering#a-deferred-contribution).
 
 ## One contribution, one host per row
 

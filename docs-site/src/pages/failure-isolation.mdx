@@ -11,6 +11,11 @@ boundary, placed by the host. That isolation is the host's job, not the
 contribution author's: a plugin comes from somewhere else, and the application
 is the one that has to stay up.
 
+Failure is the host's business. Pending UI is not: the `Suspense` boundary uses
+`fallback={null}`, so add an inner `Suspense` when the contribution needs a
+visible pending state. See [splitting a declared
+contribution](/recipes#splitting-a-declared-contribution).
+
 ## On the client
 
 The boundary catches, `renderFailed` renders in place of the contribution, and

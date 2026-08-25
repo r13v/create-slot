@@ -131,8 +131,19 @@ dependencies of its own.
 Yes. A contribution is an ordinary component rendered by the host, inside the
 host's React tree, so every context above the host is above it too. A declared
 contribution is additionally wrapped in `Suspense`, so it may read a promise the
-layout never awaited — that is what makes per-contribution streaming work. See
-[Server rendering](/server-rendering#streaming).
+layout never awaited — that is what makes per-contribution streaming work. That
+boundary uses `fallback={null}`, so bring an inner `Suspense` when the pending
+state needs visible UI. See [Server rendering](/server-rendering#streaming).
+
+## Does a plugin that is turned off stay in my bundle?
+
+Its manifest does. Its components do not, if you split them.
+
+On the runtime channel a plugin is a module, so `lazy` moves all of it into one
+chunk, and a plugin you never mount is a chunk the browser never requests. On
+the declarative channel the manifest has to stay: the application reads it to
+filter the `plugins` array and to assemble state before render. Only the
+components move. See [Recipes](/recipes#splitting-a-plugin-module).
 
 ## Does it work with React Server Components?
 
