@@ -1,6 +1,6 @@
 import "crm-core/crm.css"
 
-import { type PluginError, PluginProvider } from "create-slot"
+import { resolvePlugins, type SlotError, SlotProvider } from "create-slot"
 import {
   CRM_PLUGINS,
   CrmRuntime,
@@ -16,8 +16,9 @@ import type { CrmPageProps } from "../lib/crm-server"
 
 /**
  * The whole integration, and there is nothing Next-specific in it beyond the
- * router: build the plugin list from what the server sent, hand it to
- * `PluginProvider`, and every host below is server-rendered.
+ * router: build the plugin list from what the server sent, resolve it once,
+ * hand the Resolution to `SlotProvider`, and every host below is
+ * server-rendered.
  */
 export default function CrmApp({
   Component,
@@ -45,6 +46,11 @@ export default function CrmApp({
     return CRM_PLUGINS.filter((plugin) => ids.has(plugin.id))
   }, [enabledKey])
 
+  // Resolved from the same inputs on the server and on the client, inside the
+  // same render — deep-equal graphs, identical markup. The memo is the
+  // application's own: the provider never rebuilds anything.
+  const resolution = useMemo(() => resolvePlugins(plugins), [plugins])
+
   const navigate = useCallback(
     (href: string) => {
       void router.push(href)
@@ -54,9 +60,12 @@ export default function CrmApp({
 
   const notify = useCallback((message: string) => setToast(message), [])
 
-  const onError = useCallback(({ pluginId, slot, error }: PluginError) => {
-    console.error(`[crm] ${pluginId} → ${slot}`, error)
-  }, [])
+  const onError = useCallback(
+    ({ pluginId, contributionId, slot, error }: SlotError) => {
+      console.error(`[crm] ${pluginId}/${contributionId} → ${slot}`, error)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!toast) {
@@ -77,11 +86,11 @@ export default function CrmApp({
       navigate={navigate}
       notify={notify}
     >
-      <PluginProvider plugins={plugins} onError={onError}>
+      <SlotProvider resolution={resolution} onError={onError}>
         <Layout current={router.asPath} enabled={enabled} toast={toast}>
           <Component {...pageProps} />
         </Layout>
-      </PluginProvider>
+      </SlotProvider>
     </CrmRuntime>
   )
 }

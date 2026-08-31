@@ -3,12 +3,15 @@
 
 // [!region prelude]
 import {
+  createSlot,
   definePlugin,
   defineSlot,
   type PluginDefinition,
-  type PluginError,
-  PluginProvider,
-  usePluginId,
+  resolvePlugins,
+  type SlotError,
+  SlotHost,
+  SlotProvider,
+  useContribution,
 } from "create-slot"
 
 const Panels = defineSlot("panels")
@@ -22,39 +25,49 @@ declare function RiskyWidget(): React.ReactNode
 // [!endregion prelude]
 
 // [!region provider]
-export function App() {
+// `Failed` is a component, not a render prop: its identity is stable, and a
+// component reference crosses an RSC boundary where a closure cannot.
+function PluginFailed({
+  pluginId,
+  error,
+  reset,
+}: SlotError & { reset: () => void }) {
   return (
-    <PluginProvider
-      plugins={enabled}
-      onError={report}
-      renderFailed={({ pluginId, error, reset }) => (
-        <div role="alert">
-          <p>
-            {pluginId} could not render: {String(error)}
-          </p>
-          {/* There is no automatic reset. Recovery is this button. */}
-          <button type="button" onClick={reset}>
-            Try again
-          </button>
-        </div>
-      )}
-    >
-      <Panels.Host />
-    </PluginProvider>
+    <div role="alert">
+      <p>
+        {pluginId} could not render: {String(error)}
+      </p>
+      {/* There is no automatic reset. Recovery is this button. */}
+      <button type="button" onClick={reset}>
+        Try again
+      </button>
+    </div>
   )
 }
 
-function report({ pluginId, slot, error }: PluginError) {
-  console.error(`[${pluginId}] failed in "${slot}"`, error)
+export function App() {
+  return (
+    <SlotProvider
+      resolution={resolvePlugins(enabled)}
+      onError={report}
+      Failed={PluginFailed}
+    >
+      <SlotHost slot={Panels} />
+    </SlotProvider>
+  )
+}
+
+function report({ pluginId, contributionId, slot, error }: SlotError) {
+  console.error(`[${pluginId}/${contributionId}] failed in "${slot}"`, error)
 }
 // [!endregion provider]
 
 // [!region plugin-id]
 // The one thing only the library knows while a contribution renders: which
-// plugin's entry the host is on. Per-plugin stores, loggers and settings
-// namespaces all hang off it.
+// contribution it is. Per-plugin stores, loggers and settings namespaces all
+// hang off `useContribution().pluginId`.
 function ReportingCard() {
-  const pluginId = usePluginId()
+  const { pluginId } = useContribution()
   const store = useStoreFor(pluginId)
 
   return <article>{store.title}</article>
@@ -62,20 +75,25 @@ function ReportingCard() {
 
 export const reporting = definePlugin({
   id: "reporting",
-  contributes: [Panels.contribute({ order: 10, component: ReportingCard })],
+  contributes: [
+    Panels.contribute("card", { order: 10, component: ReportingCard }),
+  ],
 })
 // [!endregion plugin-id]
 
 // [!region runtime]
-// The host supplies only a null-fallback Suspense boundary. A runtime fill is
-// your own code, so bring your own error boundary when it can throw.
+// A façade fill gets only a null-fallback Suspense boundary from its host. It
+// is your own code in your own tree, so bring your own error boundary when it
+// can throw.
+const StatusItems = createSlot()
+
 export function RiskyChrome() {
   return (
-    <Panels.Fill>
+    <StatusItems>
       <MyErrorBoundary>
         <RiskyWidget />
       </MyErrorBoundary>
-    </Panels.Fill>
+    </StatusItems>
   )
 }
 // [!endregion runtime]

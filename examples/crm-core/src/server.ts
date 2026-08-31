@@ -1,16 +1,15 @@
 /**
- * Everything about this CRM that a server can read.
+ * Everything about this CRM that a server must own regardless of the graph.
  *
- * The manifest cannot be one of those things. A plugin declares its
- * contributions through `defineSlot`, `defineSlot` uses `createContext`, and the
- * `react-server` build of React does not export `createContext` — so the
- * catalog, and every module that reaches it, belongs to the client graph. Under
- * the app router that is not a detail: a server component that imports
- * `crm-core` fails to build.
+ * Since v4 the manifests themselves are server-legible: `defineSlot` lives in
+ * the React-free `create-slot/core`, and each plugin keeps its components in
+ * a "use client" module, so a server component may import the catalog and
+ * call `resolvePlugins` on it (see `../nextjs-app/app/layout.tsx`).
  *
- * Hence this entry point (`crm-core/server`): the plugin ids, in the order the
- * catalog uses, and the state each plugin loads per request. No React, no store,
- * no components.
+ * What still cannot ride the manifest is this file's cargo: the installed
+ * ORDER as ops-config (the list a request filters against), and the state
+ * loaders — functions the RSC boundary could never serialize anyway. No
+ * React, no store, no components.
  */
 
 import { DEALS } from "./data"

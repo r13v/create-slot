@@ -18,40 +18,37 @@ one is about the two things only the app router raises:
   application because of it;
 - a slow contribution can hold up its own line and nothing else.
 
-## The line RSC draws
+## The line RSC draws — and where v4 moved it
 
-`defineSlot` calls `createContext`, and the `react-server` build of React does
-not export `createContext`. So **the manifest lives in the client graph** — the
-catalog, the slots, every plugin — and a server component that imports
-`crm-core` does not compile.
+Since create-slot v4 the manifest is server-legible: `defineSlot` is pure data
+from `create-slot/core`, and every plugin keeps its components in a
+`"use client"` module (the two-module discipline). So the root layout — a
+server component — imports the catalog, calls `resolvePlugins`, and hands the
+**whole Resolution** across the boundary: metadata plus client references,
+all serializable.
 
-Nothing crosses the boundary but data:
+| File                                                 | Graph  | What it does                                                                       |
+| ---------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| [app/layout.tsx](app/layout.tsx)                     | server | Decides the request, **resolves the slot graph**, starts the one slow query        |
+| [app/server-nav.tsx](app/server-nav.tsx)             | server | A host with no client half: `entriesOf` + `ContributionBoundary` over the graph    |
+| [lib/crm-server.ts](lib/crm-server.ts)               | server | `next/headers`, `crm-core/server` — per-request state loading                      |
+| [lib/catalog.ts](lib/catalog.ts)                     | both   | The installed list: the layout resolves it, the shell assembles the runtime        |
+| [components/crm-shell.tsx](components/crm-shell.tsx) | client | `"use client"`. Takes the Resolution as a prop and hands it to `SlotProvider`      |
+| [lib/crm-pages.ts](lib/crm-pages.ts)                 | client | `"use client"` re-export, so a server route may render the shared pages           |
+| [lib/crm-request.ts](lib/crm-request.ts)             | both   | The header name and the installed ids — the facts every environment needs          |
 
-| File                                                 | Graph  | What it does                                                                    |
-| ---------------------------------------------------- | ------ | ------------------------------------------------------------------------------- |
-| [app/layout.tsx](app/layout.tsx)                     | server | Decides the request: which plugins, their state, and the one slow query         |
-| [lib/crm-server.ts](lib/crm-server.ts)               | server | `next/headers`, `crm-core/server` — the half of the CRM a server may read       |
-| [components/crm-shell.tsx](components/crm-shell.tsx) | client | `"use client"`. Imports the manifests itself and hands them to `PluginProvider` |
-| [lib/crm-pages.ts](lib/crm-pages.ts)                 | client | `"use client"` re-export, so a server route may render the shared pages         |
-| [lib/crm-request.ts](lib/crm-request.ts)             | both   | The header name and the installed ids — the only facts both sides need          |
-
-The rule that falls out of it: **the server sends ids, the client owns
-manifests.** A component or a function cannot be a prop of a server component, so
-`enabled: string[]` travels and `CRM_PLUGINS` stays where it was imported. The
-SSR contract is unchanged — the same list, in the same order, on both sides — it
-is just expressed in the only currency RSC has.
-
-`crm-core/server` exists for the same reason. `preloadCrmState` used to sit next
-to the store in `crm-core/runtime.tsx`; that module reaches `react-redux`, so a
-server component cannot import it. The plugins' server halves now live in
-[`pipeline.server.ts`](../crm-core/src/plugins/pipeline.server.ts) and
-[`email.server.ts`](../crm-core/src/plugins/email.server.ts), and the manifest
-points at them.
+What still cannot cross are **functions**: reducers, `setup` lifecycles,
+per-plugin stores. That is why `enabled: string[]` still travels and the shell
+assembles the runtime's plugin list itself — and why `crm-core/server` keeps
+the state loaders: `preloadCrmState` runs per request, and a function cannot
+be a prop of a server component.
 
 ## Streaming
 
 The **Quarter attainment** card comes from this example's own plugin,
-[plugins/insights.tsx](plugins/insights.tsx). Its number takes 1.2 seconds to
+[plugins/insights.tsx](plugins/insights.tsx) (manifest) and
+[plugins/insights.components.tsx](plugins/insights.components.tsx) (its
+client half). Its number takes 1.2 seconds to
 load, and nothing waits for it: the layout starts the query and passes the
 _promise_, the card reads it with `use()`, and the `Suspense` boundary the host
 already puts around every contribution turns that into one hole in the first

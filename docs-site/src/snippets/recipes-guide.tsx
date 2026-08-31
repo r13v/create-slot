@@ -7,7 +7,9 @@ import {
   definePlugin,
   defineSlot,
   type PluginDefinition,
-  PluginProvider,
+  resolvePlugins,
+  SlotHost,
+  SlotProvider,
 } from "create-slot"
 import { lazy, type ReactNode, Suspense, useMemo } from "react"
 
@@ -39,7 +41,10 @@ export function DealTable({
       {deals.map((deal) => (
         <li key={deal.id}>
           {deal.id}
-          <DealRow.Host dealId={deal.id} selected={deal.selected} />
+          <SlotHost
+            slot={DealRow}
+            props={{ dealId: deal.id, selected: deal.selected }}
+          />
         </li>
       ))}
     </ul>
@@ -53,7 +58,9 @@ function RowBadge({ selected }: { dealId: string; selected: boolean }) {
 
 export const badges = definePlugin({
   id: "badges",
-  contributes: [DealRow.contribute({ order: 10, component: RowBadge })],
+  contributes: [
+    DealRow.contribute("badge", { order: 10, component: RowBadge }),
+  ],
 })
 // [!endregion per-host]
 
@@ -133,8 +140,9 @@ export function ArchiveAction({ stage }: { stage: string }) {
 // [!endregion visibility]
 
 // [!region toggle]
-// Declarative: one filter, memoised so the index is not rebuilt per render.
-// Runtime: uninstalling a feature is not rendering it.
+// Declarative: resolve from the filtered list, or keep the list whole and
+// `disable` by id — a typo in an id comes back as a diagnostic, not a silent
+// no-op. Runtime: uninstalling a feature is not rendering it.
 export function Toggles({
   disabled,
   showDrafts,
@@ -142,16 +150,16 @@ export function Toggles({
   disabled: readonly string[]
   showDrafts: boolean
 }) {
-  const plugins = useMemo(
-    () => CATALOG.filter((plugin) => !disabled.includes(plugin.id)),
+  const resolution = useMemo(
+    () => resolvePlugins(CATALOG, { disable: { plugins: disabled } }),
     [disabled],
   )
 
   return (
-    <PluginProvider plugins={plugins}>
+    <SlotProvider resolution={resolution}>
       <AppShell />
       {showDrafts && <DraftBadge />}
-    </PluginProvider>
+    </SlotProvider>
   )
 }
 // [!endregion toggle]
@@ -188,13 +196,14 @@ export function Shell({ telephony }: { telephony: boolean }) {
 // [!region split-declared]
 // Only the component is deferred. The manifest stays in the initial bundle,
 // because the application has to read it to filter and to build its state.
-// Bring your own `Suspense`: the host's boundary uses `fallback={null}`.
+// The provider's `Pending` fills the wait; an inner `Suspense` gives this one
+// contribution a skeleton of its own.
 const DealPanel = lazy(() => import("./panel"))
 
 export const notes = definePlugin({
   id: "notes",
   contributes: [
-    DealPanels.contribute({
+    DealPanels.contribute("panel", {
       order: 10,
       component: (props) => (
         <Suspense fallback={<Skeleton />}>
@@ -207,11 +216,13 @@ export const notes = definePlugin({
 // [!endregion split-declared]
 
 // [!region split-trap]
-// This compiles, and it is shorter. It is also a gap: one deferred contribution
-// is still one entry, so the host skips its placeholder, and the host's own
-// boundary renders `null` until the chunk arrives.
+// This compiles, and it is shorter. One deferred contribution is still one
+// entry, so the host skips its placeholder — and with no `Pending` set on the
+// provider, the boundary renders `null` until the chunk arrives.
 export const notesWithAGap = definePlugin({
   id: "notes-with-a-gap",
-  contributes: [DealPanels.contribute({ order: 10, component: DealPanel })],
+  contributes: [
+    DealPanels.contribute("panel", { order: 10, component: DealPanel }),
+  ],
 })
 // [!endregion split-trap]

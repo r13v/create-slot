@@ -1,6 +1,12 @@
 ---
-status: accepted
+status: amended by 0004-resolution-core
 ---
+
+> **4.0:** the clean break this ADR declined for 3.0 happened. The canonical
+> name `Slot` now belongs to the registry's descriptor; the façade's component
+> type is `RuntimeSlot<Props>`. The façade's four runtime usage forms —
+> `createSlot`, `<Slot>`, `Slot.Host`, `Slot.useProps` — remain source-
+> compatible, so the two-vocabularies observation still holds for them.
 
 # The façade keeps its published names; the registry carries the canonical language
 

@@ -1,6 +1,12 @@
 ---
-status: accepted
+status: superseded by 0004-resolution-core
 ---
+
+> **4.0:** `defineSlot` moved to the React-free `create-slot/core`, so a
+> manifest following the two-module discipline is server-importable and the
+> whole premise below no longer binds the library. The CRM's server seam
+> (`crm-core/server`) survives for what still cannot cross the boundary:
+> installed order as ops-config and per-request state loaders.
 
 # The manifest stays client-side, and the CRM grows a server seam
 

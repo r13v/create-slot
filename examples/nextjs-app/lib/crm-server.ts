@@ -1,7 +1,7 @@
 import { preloadCrmState } from "crm-core/server"
 import { headers } from "next/headers"
 
-import { INSTALLED_IDS, PLUGINS_HEADER } from "./crm-request"
+import { INSTALLED_IDS, PATHNAME_HEADER, PLUGINS_HEADER } from "./crm-request"
 import { type Insight, loadInsight } from "./insight"
 
 /**
@@ -14,6 +14,8 @@ import { type Insight, loadInsight } from "./insight"
  */
 export type CrmRequest = {
   enabled: string[]
+  /** The route this request rendered, for hosts with no client half. */
+  current: string
   preloadedState: Record<string, unknown>
   /** Deliberately not awaited. React streams it to the client that reads it. */
   insight: Promise<Insight>
@@ -37,10 +39,12 @@ function enabledFor(requested: string | null): string[] {
 }
 
 export async function loadCrmRequest(): Promise<CrmRequest> {
-  const requested = (await headers()).get(PLUGINS_HEADER)
+  const requestHeaders = await headers()
+  const requested = requestHeaders.get(PLUGINS_HEADER)
 
   return {
     enabled: enabledFor(requested),
+    current: requestHeaders.get(PATHNAME_HEADER) ?? "/",
     // Loaded for the whole catalog, not just the enabled plugins: the store's
     // shape must not depend on a toggle.
     preloadedState: await preloadCrmState(),

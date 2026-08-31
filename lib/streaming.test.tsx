@@ -3,8 +3,15 @@ import { Writable } from "node:stream"
 import { type ReactElement, Suspense } from "react"
 import { renderToPipeableStream } from "react-dom/server"
 import { describe, expect, it } from "vitest"
-
-import { definePlugin, defineSlot, PluginProvider } from "./create-slot"
+import { trackedFills } from "./facade/create-slot"
+import {
+  createSlot,
+  definePlugin,
+  defineSlot,
+  resolvePlugins,
+  SlotHost,
+  SlotProvider,
+} from "./index"
 
 const NavMenu = defineSlot("nav-menu")
 
@@ -56,34 +63,43 @@ function stream(
 const sibling = definePlugin({
   id: "sibling",
   contributes: [
-    NavMenu.contribute({ order: 100, component: () => <li>sibling</li> }),
+    NavMenu.contribute("entry", {
+      order: 100,
+      component: () => <li>sibling</li>,
+    }),
   ],
 })
 
-describe("registry streaming", () => {
-  it("flushes the shell before a suspended contribution resolves", async () => {
-    let value: string | null = null
-    let release!: () => void
+function pendingValue() {
+  let value: string | null = null
+  let release!: () => void
 
-    const pending = new Promise<void>((resolve) => {
-      release = resolve
-    }).then(() => {
-      value = "late rows"
-    })
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  }).then(() => {
+    value = "arrived"
+  })
 
-    function LateContent() {
-      if (value === null) {
-        throw pending
-      }
-
-      return <li>{value}</li>
+  function Late() {
+    if (value === null) {
+      throw pending
     }
 
-    // A contribution brings its own fallback: the library has no `pending` prop.
+    return <li>{value}</li>
+  }
+
+  return { Late, release: () => release() }
+}
+
+describe("registry streaming", () => {
+  it("flushes the shell before a suspended contribution resolves", async () => {
+    const { Late, release } = pendingValue()
+
+    // A contribution can bring its own fallback; the nearest boundary wins.
     function SlowContribution() {
       return (
         <Suspense fallback={<li>loading</li>}>
-          <LateContent />
+          <Late />
         </Suspense>
       )
     }
@@ -91,26 +107,26 @@ describe("registry streaming", () => {
     const slow = definePlugin({
       id: "slow",
       contributes: [
-        NavMenu.contribute({ order: 0, component: SlowContribution }),
+        NavMenu.contribute("entry", { order: 0, component: SlowContribution }),
       ],
     })
 
     const { shell, full } = await stream(
-      <PluginProvider plugins={[slow, sibling]}>
+      <SlotProvider resolution={resolvePlugins([slow, sibling])}>
         <ul>
-          <NavMenu.Host />
+          <SlotHost slot={NavMenu} />
         </ul>
-      </PluginProvider>,
+      </SlotProvider>,
       () => release(),
     )
 
     // The slow plugin holds up its own line and nothing else.
     expect(shell).toContain("loading")
     expect(shell).toContain("sibling")
-    expect(shell).not.toContain("late rows")
+    expect(shell).not.toContain("arrived")
 
     // React streams the resolved content in and swaps the fallback out.
-    expect(full).toContain("late rows")
+    expect(full).toContain("arrived")
   })
 
   it("fixes the order in the shell before any suspended contribution resolves", async () => {
@@ -141,7 +157,7 @@ describe("registry streaming", () => {
     const slow = definePlugin({
       id: "slow",
       contributes: [
-        NavMenu.contribute({
+        NavMenu.contribute("first", {
           order: 0,
           component: () => (
             <Suspense fallback={<li>loading first</li>}>
@@ -149,7 +165,7 @@ describe("registry streaming", () => {
             </Suspense>
           ),
         }),
-        NavMenu.contribute({
+        NavMenu.contribute("last", {
           order: 200,
           component: () => (
             <Suspense fallback={<li>loading last</li>}>
@@ -161,11 +177,11 @@ describe("registry streaming", () => {
     })
 
     const { shell, full, errors } = await stream(
-      <PluginProvider plugins={[slow, sibling]}>
+      <SlotProvider resolution={resolvePlugins([slow, sibling])}>
         <ul>
-          <NavMenu.Host />
+          <SlotHost slot={NavMenu} />
         </ul>
-      </PluginProvider>,
+      </SlotProvider>,
       () => {
         // Deliberately backwards: the later contribution finishes first.
         release.last()
@@ -187,43 +203,29 @@ describe("registry streaming", () => {
 
   it("streams a contribution that brought no fallback of its own", async () => {
     const Menu = defineSlot("streaming-no-fallback")
-    let value: string | null = null
-    let release!: () => void
-
-    const pending = new Promise<void>((resolve) => {
-      release = resolve
-    }).then(() => {
-      // Not "late": React's own placeholder markup is a `<template>`, and a
-      // shell assertion has to be able to tell the two apart.
-      value = "arrived"
-    })
-
-    function Late() {
-      if (value === null) {
-        throw pending
-      }
-
-      return <li>{value}</li>
-    }
+    const { Late, release } = pendingValue()
 
     const slow = definePlugin({
       id: "slow",
-      contributes: [Menu.contribute({ order: 0, component: Late })],
+      contributes: [Menu.contribute("late", { order: 0, component: Late })],
     })
 
     const quick = definePlugin({
       id: "quick",
       contributes: [
-        Menu.contribute({ order: 10, component: () => <li>quick</li> }),
+        Menu.contribute("entry", {
+          order: 10,
+          component: () => <li>quick</li>,
+        }),
       ],
     })
 
     const { shell, full, errors } = await stream(
-      <PluginProvider plugins={[slow, quick]}>
+      <SlotProvider resolution={resolvePlugins([slow, quick])}>
         <ul>
-          <Menu.Host />
+          <SlotHost slot={Menu} />
         </ul>
-      </PluginProvider>,
+      </SlotProvider>,
       () => release(),
     )
 
@@ -236,20 +238,52 @@ describe("registry streaming", () => {
     expect(errors).toEqual([])
   })
 
-  it("leaves a runtime fill out of a stream entirely", async () => {
-    const Menu = defineSlot("streaming-runtime")
+  it("ships the provider's Pending in the shell and swaps it for the content", async () => {
+    const Menu = defineSlot("streaming-pending")
+    const { Late, release } = pendingValue()
+
+    const slow = definePlugin({
+      id: "slow",
+      contributes: [Menu.contribute("late", { order: 0, component: Late })],
+    })
+
+    const { shell, full, errors } = await stream(
+      <SlotProvider
+        resolution={resolvePlugins([slow])}
+        Pending={({ pluginId, contributionId }) => (
+          <li>{`skeleton ${pluginId}/${contributionId}`}</li>
+        )}
+      >
+        <ul>
+          <SlotHost slot={Menu} />
+        </ul>
+      </SlotProvider>,
+      () => release(),
+    )
+
+    // A non-null Pending is a trade the application opted into: the shell
+    // carries the skeleton markup, and React's $RC script swaps it out once
+    // the content streams in.
+    expect(shell).toContain("skeleton slow/late")
+    expect(full).toContain("arrived")
+    expect(full).toContain("$RC")
+    expect(errors).toEqual([])
+  })
+
+  it("leaves a façade fill out of a stream entirely", async () => {
+    const Menu = createSlot()
 
     const { full, errors } = await stream(
-      <PluginProvider plugins={[]}>
+      <>
         <ul>
           <Menu.Host>
             <li>placeholder</li>
           </Menu.Host>
         </ul>
-        <Menu.Fill>
+        <Menu>
           <li>runtime</li>
-        </Menu.Fill>
-      </PluginProvider>,
+        </Menu>
+      </>,
     )
 
     // Off jsdom there is no `window`, so the fill's registration is a passive
@@ -257,13 +291,16 @@ describe("registry streaming", () => {
     expect(full).toContain("placeholder")
     expect(full).not.toContain("runtime")
     expect(errors).toEqual([])
+
+    // And nothing may linger: a server render must leave the store untouched.
+    expect(trackedFills(Menu)).toEqual({ entries: 0, listeners: 0 })
   })
 
   it("keeps the rest of the HTML when a contribution throws", async () => {
     const broken = definePlugin({
       id: "broken",
       contributes: [
-        NavMenu.contribute({
+        NavMenu.contribute("entry", {
           order: 0,
           component: () => {
             throw new Error("boom")
@@ -275,11 +312,11 @@ describe("registry streaming", () => {
     // Nothing suspends here, so the whole stream completes in one pass and
     // `shell` never gets a separate snapshot — assert on the full output.
     const { full, errors } = await stream(
-      <PluginProvider plugins={[broken, sibling]}>
+      <SlotProvider resolution={resolvePlugins([broken, sibling])}>
         <ul>
-          <NavMenu.Host />
+          <SlotHost slot={NavMenu} />
         </ul>
-      </PluginProvider>,
+      </SlotProvider>,
     )
 
     // Reported through the stream's own onError, and the shell still ships:

@@ -1,6 +1,12 @@
 ---
-status: accepted
+status: superseded by 0004-resolution-core
 ---
+
+> **4.0:** the provider accepts `Pending` and `Failed` as component props, so
+> an application can now express a skeleton for third-party contributions
+> without touching them. The defaults stay `null` — the streamed shell is
+> unchanged unless the application opts in — and loading itself still belongs
+> to `React.lazy`/`next/dynamic`, exactly as argued below.
 
 # The host owns the boundary, not the loading
 

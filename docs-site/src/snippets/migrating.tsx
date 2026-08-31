@@ -6,14 +6,20 @@ import {
   createSlot,
   definePlugin,
   defineSlot,
-  PluginProvider,
+  type RuntimeSlot,
+  resolvePlugins,
+  type SlotError,
+  SlotHost,
+  SlotProvider,
+  useContribution,
 } from "create-slot"
 
 // [!endregion prelude]
 
 // [!region unchanged]
-// Nothing to do. `createSlot`, `Slot`, `Slot.Host`, `Slot.useProps` and the
-// `Slot<Props>` type are the names 2.x published, and they are unchanged.
+// Nothing to do at runtime. `createSlot`, `Slot`, `Slot.Host` and
+// `Slot.useProps` are the names 2.x published, and they still mean what they
+// meant.
 const Menu = createSlot<{ current: string }>()
 
 export function Feature() {
@@ -23,57 +29,70 @@ export function Feature() {
     </Menu>
   )
 }
+
+// One rename: the type 2.x called `Slot<Props>` is now `RuntimeSlot<Props>`.
+// `Slot<Props>` names the descriptor `defineSlot` returns instead.
+export type MenuSlot = RuntimeSlot<{ current: string }>
 // [!endregion unchanged]
 
-// [!region order-before]
-// 2.x: `order` was an array index, so two fills sharing one silently replaced
-// each other. Order bands and strides existed to avoid the collision.
-const BAND = 1000
-
-export function LegacyFeature({ slot }: { slot: number }) {
-  return (
-    <Menu order={BAND + slot * 10}>
-      <li>Pricing</li>
-    </Menu>
-  )
-}
-// [!endregion order-before]
-
-// [!region order-after]
-// 3.0: `order` is a real priority. Two fills that share one both render, in
-// registration order, so the bands, the stride and the duplicate detector are
-// all deletable.
-export function Feature3({ current }: { current: string }) {
-  return (
-    <Menu order={10}>
-      <li>{current}</li>
-    </Menu>
-  )
-}
-// [!endregion order-after]
-
-// [!region to-registry]
-// Moving one feature onto the declarative channel, so it lands in server HTML:
-// the slot gains a name, the fill becomes a contribution, and the app gains a
-// provider.
+// [!region after]
+// The 4.0 shape of a v3 registry: the contribution gains a required id, the
+// provider takes a Resolution, and the host is one generic component with an
+// explicit props bag.
 const NavMenu = defineSlot<{ current: string }>("nav-menu")
 
 const pricing = definePlugin({
   id: "pricing",
-  contributes: [NavMenu.contribute({ order: 10, component: PricingItem })],
+  contributes: [
+    NavMenu.contribute("nav-item", { order: 10, component: PricingItem }),
+  ],
 })
 
 function PricingItem({ current }: { current: string }) {
   return <li>{current}</li>
 }
 
+const resolution = resolvePlugins([pricing])
+
 export function App({ route }: { route: string }) {
   return (
-    <PluginProvider plugins={[pricing]}>
+    <SlotProvider resolution={resolution}>
       <ul>
-        <NavMenu.Host current={route} />
+        <SlotHost slot={NavMenu} props={{ current: route }} />
       </ul>
-    </PluginProvider>
+    </SlotProvider>
   )
 }
-// [!endregion to-registry]
+// [!endregion after]
+
+// [!region failed]
+// `renderFailed` becomes `Failed` — a component, so its identity is stable
+// and it crosses an RSC boundary. It also learns which contribution failed.
+function PluginFailed({ pluginId, reset }: SlotError & { reset: () => void }) {
+  return (
+    <button type="button" onClick={reset}>
+      Retry {pluginId}
+    </button>
+  )
+}
+
+export function Isolated() {
+  return (
+    <SlotProvider resolution={resolution} Failed={PluginFailed}>
+      <SlotHost slot={NavMenu} props={{ current: "/" }} />
+    </SlotProvider>
+  )
+}
+// [!endregion failed]
+
+// [!region identity]
+// `usePluginId()` becomes `useContribution().pluginId`, and the hook now also
+// names the contribution and the slot.
+export function Card() {
+  const { pluginId, contributionId, slot } = useContribution()
+
+  return (
+    <article data-plugin={pluginId} data-id={contributionId} data-slot={slot} />
+  )
+}
+// [!endregion identity]

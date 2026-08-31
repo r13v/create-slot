@@ -139,28 +139,35 @@ For more, see the [slots guide](https://r13v.github.io/create-slot/slots), [orde
 
 A fill's server and first hydration snapshots are intentionally empty. It registers from an effect after hydration, so the server sends the children of each host and the fills replace them on the client.
 
-If the content must be in the HTML, use the plugin registry. A contribution is data, so a host can render it synchronously on the server:
+If the content must be in the HTML, use the plugin registry. A contribution is data under a required id; `resolvePlugins` — a pure, React-free function — turns the plugin list into a `Resolution` a host renders synchronously, on the server too:
 
 ```tsx
-import { definePlugin, defineSlot, PluginProvider } from "create-slot"
+import { definePlugin, defineSlot, resolvePlugins } from "create-slot/core"
+import { SlotHost, SlotProvider } from "create-slot"
 
 const NavMenu = defineSlot<{ current: string }>("nav-menu")
 
 const pricing = definePlugin({
   id: "pricing",
-  contributes: [NavMenu.contribute({ order: 10, component: PricingNavItem })],
+  contributes: [
+    NavMenu.contribute("nav-item", { order: 10, component: PricingNavItem }),
+  ],
 })
 
-;<PluginProvider plugins={enabledPlugins}>
+const resolution = resolvePlugins([pricing], {
+  disable: { contributions: [] }, // per-tenant config, typed overrides — see the guide
+})
+
+;<SlotProvider resolution={resolution}>
   <ul>
-    <NavMenu.Host current={route} />
+    <SlotHost slot={NavMenu} props={{ current: route }} />
   </ul>
-</PluginProvider>
+</SlotProvider>
 ```
 
-The only requirement for SSR is that the server and the client get the same plugin array, in the same order.
+The only SSR requirement: give the resolver the same inputs, in the same order, on the server and on the client. Under React Server Components the manifest itself can be server-legible — `create-slot/core` is React-free — so a server layout can resolve the graph and pass the whole `Resolution` across the client boundary ([REGISTRY.md](REGISTRY.md), "React Server Components").
 
-Both channels feed the same host and use the same `order`, so you can mix them. Use the registry for content that must be in the HTML. Use `createSlot` for content that depends on live tree state.
+The two channels are separate on purpose: the registry is declarative and addressable; `createSlot` is the runtime channel for content that depends on live tree state.
 
 See the [registry guide](https://r13v.github.io/create-slot/registry) for the full API, and [server rendering](https://r13v.github.io/create-slot/server-rendering) for the details.
 
@@ -186,7 +193,7 @@ npm run dev:next-app   # http://localhost:3001 — Next.js app router, RSC + str
 
 - **[examples/spa](examples/spa)** — a plugin is a component. To install it, mount it as a child of the shell. Per-row hosts give the same fill different props.
 - **[examples/nextjs-pages](examples/nextjs-pages)** — the registry instead. View the page source to see the contributions in the HTML that the server sends.
-- **[examples/nextjs-app](examples/nextjs-app)** — the same app with React Server Components. One slow contribution streams in after the rest of the page.
+- **[examples/nextjs-app](examples/nextjs-app)** — the same app with React Server Components: the server layout resolves the graph and hands the `Resolution` across the boundary; one slow contribution streams in after the rest of the page; one host has no client half at all.
 
 ---
 

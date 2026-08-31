@@ -6,10 +6,11 @@ showAskAi: false
 
 # Use with AI agents
 
-`create-slot` changed shape in 3.0: the [declarative channel](/registry) is now
-the primary one, and an agent working from its training data will reach for
-`createSlot` and an effect where the plugin registry belongs. The skill on this
-page fixes that. It tells a compatible coding agent to read the current
+`create-slot` changed shape in 4.0: the [registry](/registry) resolves plugins
+into a `Resolution` before render, and an agent working from its training data
+will reach for `createSlot` and an effect — or for the removed
+`PluginProvider` — where `resolvePlugins` and `SlotProvider` belong. The skill
+on this page fixes that. It tells a compatible coding agent to read the current
 documentation before it implements, reviews, debugs or explains create-slot
 code.
 
@@ -75,7 +76,7 @@ a declared contribution, and for order values that only work by accident.
 When the skill activates it sends the agent to the
 [LLM documentation index](https://r13v.github.io/create-slot/llms.txt) and tells
 it to treat that as the source of truth — which is what keeps it from answering
-from a pre-3.0 memory of the API.
+from a pre-4.0 memory of the API.
 
 ## Read the docs without a skill
 

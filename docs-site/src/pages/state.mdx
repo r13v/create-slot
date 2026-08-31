@@ -13,14 +13,14 @@ Everything else is yours.
 
 ## Why a store at all
 
-On the [declarative channel](/channels) a plugin's contributions no longer share
-a React subtree, so they no longer share ordinary `useState`. Two contributions
+On the [declarative channel](/channels) a plugin's contributions do not share
+a React subtree, so they do not share ordinary `useState`. Two contributions
 of one plugin are two separate places in the tree that happen to carry the same
 `pluginId`. A store takes the place of the shared subtree.
 
 On the [runtime channel](/slots#the-runtime-channel) the question does not
-arise: a feature that contributes through `Fill` is one subtree, so its parts
-share ordinary state and you need none of this page.
+arise: a feature that fills through the `createSlot()` façade is one subtree,
+so its parts share ordinary state and you need none of this page.
 
 ## Extend the manifest
 
@@ -73,7 +73,8 @@ The server sends the loaded state with the HTML and the client starts from it.
 
 A plugin declares `createStore`, and the application creates one instance per
 application instance — which on the server means per request. A contribution
-finds its own store through `usePluginId`, the only thing the library owes it.
+finds its own store through `useContribution().pluginId`, the identity only the
+library knows while it renders.
 
 ```tsx twoslash
 // [!include ~/snippets/state-guide.tsx:prelude]
@@ -111,8 +112,8 @@ the registration in `startTransition` is what keeps streamed markup intact. See
 Two details in that hook are load-bearing:
 
 - **`plugins` is a dependency**, so the effect re-runs when the list changes and
-  the previous teardown runs first. Keep that array stable for the same reason
-  [`PluginProvider`](/performance#keep-the-plugin-list-stable) wants it stable.
+  the previous teardown runs first. Keep that array stable — the effect, unlike
+  a [host](/performance), has no content comparison to fall back on.
 - **Teardown is collected outside the transition**, because the cleanup must run
   synchronously when the component unmounts.
 
@@ -120,14 +121,14 @@ Two details in that hook are load-bearing:
 
 A declared contribution gets the host's props, and nothing else. Everything
 per-plugin it needs — its slice, its logger, its settings namespace — it looks up
-by `usePluginId`, as `CallIndicator` does above.
+by `useContribution().pluginId`, as `CallIndicator` does above.
 
-`usePluginId` throws outside a contribution rendered by a host, so a component
-that reads it cannot be mounted in the wrong place and quietly get somebody
-else's state. See [Errors](/errors#usepluginid-called-outside-of-a-plugin-contribution).
+`useContribution` throws outside a contribution, so a component that reads it
+cannot be mounted in the wrong place and quietly get somebody else's state. See
+[Errors](/errors#usecontribution-called-outside-of-a-plugin-contribution).
 
 ## Next
 
 - [Recipes](/recipes) — resolving exclusive claims, building an inventory
 - [Server rendering](/server-rendering) — preloading state with the HTML
-- [Performance](/performance) — why the plugin array must stay stable
+- [Performance](/performance) — what a re-render costs, and what stays free

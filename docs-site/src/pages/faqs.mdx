@@ -23,29 +23,28 @@ is genuinely empty, so [CSS covers it](/recipes#empty-states).
 
 ## Does it work with server rendering?
 
-The [declarative channel](/registry) does, fully: contributions are in the HTML,
-with no effects on the render path. The only requirement is that the `plugins`
-array is the same, in the same order, on both sides.
+The [registry](/registry) does, fully: contributions are in the HTML, with no
+effects on the render path. The only requirement is that the resolver gets the
+same inputs, in the same order, on both sides.
 
 The runtime channel does not. Its server and first hydration snapshots are both
-empty; fills register from an effect after hydration, replacing each host's
-placeholder. See [Server rendering](/server-rendering).
+empty; fills register from an effect after hydration, replacing each façade
+host's placeholder. See [Server rendering](/server-rendering).
 
 ## Two contributions with the same `order`?
 
-Both render. The tie is stable: a declared contribution beats a fill, then
-registration sequence decides. Nothing is overwritten and nothing is dropped —
-that was 2.x behaviour, and [3.0 removed it](/migrating#order-changed-meaning).
+Both render. The tie is stable: plugin position in the list, then declaration
+position inside the plugin. Nothing is overwritten and nothing is dropped. On
+the façade, fills that share an `order` render in mount order.
 
-## Why does `useProps()` return `null`?
+## Why is `useSlotProps()` nullable?
 
-Because `defineSlot`'s `Fill` cannot promise that a host is above it. The
-`createSlot` façade narrows the same hook to `Props`, since a `Slot`'s children
-only ever render inside a host.
+Because nothing guarantees a host above its caller. The `createSlot` façade's
+`useProps` is the non-nullable one, since a `Slot`'s children only ever render
+inside one of its factory's hosts.
 
-Inside a *declared* contribution the hook works too — the host provides the
-context around it — but you do not need it: the host's props arrive as your
-component's own props, already narrowed.
+Inside a *declared* contribution you rarely need either: the host's props
+arrive as your component's own props, already narrowed.
 
 ## How is this different from a portal?
 
@@ -56,19 +55,22 @@ context and its props. Nothing is relocated in the DOM after the fact.
 ## How is this different from pushing elements through context?
 
 You are not maintaining an array of elements in a global context, and the host is
-not re-rendering the world when one feature changes. Contributions are indexed
-per slot, sorted once, and read with `useSyncExternalStore` on the runtime side.
+not re-rendering the world when one feature changes. The registry resolves once
+into plain data and compares entries by content; the façade reads its private
+store with `useSyncExternalStore`.
 
-## Do I need `PluginProvider` for `createSlot`?
+## Do I need `SlotProvider` for `createSlot`?
 
-No. That API never had one, so its host tolerates a missing provider and simply
-has no declared contributions. `defineSlot`'s host throws without one, because
+No. The façade has no provider: its host renders its factory's fills — or its
+placeholder — anywhere. `SlotHost` throws without a `SlotProvider`, because
 there a missing provider is a mistake worth reporting.
 
 ## Can I use both channels in the same slot?
 
-Yes, and it is a supported shape rather than a migration step. They rank on the
-same `order`. See [Mixing them](/channels#mixing-them).
+No — and that is the point. A `SlotHost` renders declared contributions only,
+and a façade host renders its factory's fills only, so a late client fill can
+never displace markup the server already shipped. Use both channels side by
+side, each with its own host. See [Two channels](/channels#using-both).
 
 ## How do I make exactly one plugin own something?
 
@@ -84,13 +86,16 @@ which a predicate in the manifest could not.
 
 ## What does the library validate?
 
-That `defineSlot` and `definePlugin` get a non-empty name and id, that a fill's
-child is a single element, and — in development — that plugin ids are unique,
-because an id becomes part of every contribution's React key.
+Two throws at declaration — `defineSlot` and `definePlugin` need a non-empty
+name and id — and one at render: a façade fill's child must be a single
+element.
 
-Nothing else. Names, capabilities, routes and versions are your manifest's
-fields, so they are yours to check. Every message is listed on
-[Errors](/errors).
+Everything about the *manifest* comes back as
+[diagnostics](/errors#diagnostics) on the Resolution instead: duplicate plugin
+ids, duplicate or invalid contribution ids, disable and override targets that
+nothing carries. `expect(resolvePlugins(PLUGINS).diagnostics).toEqual([])` in a
+test is the catalog validator. Names, capabilities, routes and versions are
+your manifest's fields, so they are yours to check.
 
 ## Does a plugin's contributions share state?
 
@@ -102,38 +107,34 @@ See [Plugin state](/state).
 ## Does one feature's state change re-render the others?
 
 No, as long as the host's own props did not really change. The host compares its
-props by value and renders each declared contribution through a memoised view of
-it, so a hundred contributions do not re-render because a search box beside them
-took a keystroke.
-
-It asks two things of your application in return: keep the `plugins` array
-stable, and pass host props by value where you can. See
+props by value, compares each resolved entry by content, and renders each
+contribution through a memoised view of it — so a hundred contributions do not
+re-render because a search box beside them took a keystroke, and even an inline
+`resolvePlugins()` per render re-renders only hosts and boundary shells. See
 [Performance](/performance).
 
 ## Is a slot name a global?
 
-The runtime store is module-level and keyed by slot name, so yes, within one
-loaded copy of `create-slot`. Every React root using that copy shares the slot;
-the declarative channel remains scoped to its nearest `PluginProvider`. The
-store is safe on the server because `getServerSnapshot` never reads it.
-
-Generated names are fine — one slot per table row, for instance. When the last
-fill and the last host for a name are gone, the store drops the bucket.
+A *declared* slot name is a key in whatever Resolution you resolve — scope it
+by resolving different graphs for different providers. The façade has no names
+at all: each `createSlot()` factory owns a private store, so two factories can
+never exchange fills, and a duplicated copy of the package cannot split a store
+it does not hold.
 
 ## Which React versions work?
 
 18 and up, on any renderer. The only React API the library needs that 17 lacks
 is `useSyncExternalStore`. React is a peer dependency, and the package has no
-dependencies of its own.
+dependencies of its own. `create-slot/core` needs no React at all.
 
 ## Can a contribution use hooks, context and data fetching?
 
 Yes. A contribution is an ordinary component rendered by the host, inside the
 host's React tree, so every context above the host is above it too. A declared
 contribution is additionally wrapped in `Suspense`, so it may read a promise the
-layout never awaited — that is what makes per-contribution streaming work. That
-boundary uses `fallback={null}`, so bring an inner `Suspense` when the pending
-state needs visible UI. See [Server rendering](/server-rendering#streaming).
+layout never awaited — that is what makes per-contribution streaming work. The
+fallback is the provider's `Pending`, or `null` when none is set. See
+[Server rendering](/server-rendering#streaming).
 
 ## Does a plugin that is turned off stay in my bundle?
 
@@ -142,37 +143,38 @@ Its manifest does. Its components do not, if you split them.
 On the runtime channel a plugin is a module, so `lazy` moves all of it into one
 chunk, and a plugin you never mount is a chunk the browser never requests. On
 the declarative channel the manifest has to stay: the application reads it to
-filter the `plugins` array and to assemble state before render. Only the
+resolve the graph and to assemble state before render. Only the
 components move. See [Recipes](/recipes#splitting-a-plugin-module).
 
 ## Does it work with React Server Components?
 
-The registry itself is client-side code: `defineSlot` creates a context and
-`PluginProvider` uses `useMemo`, neither of which the `react-server` build
-exports. A server component that imports a manifest does not compile.
-
-Server *rendering* still works, because client components are rendered on the
-server. What changes is that the server sends plugin **ids** across a
-`"use client"` boundary and the client assembles the list. See
+Yes, in two tiers. `create-slot/core` never imports React, so a server
+component can import manifests and call `resolvePlugins` itself — and under
+[the two-module discipline](/server-rendering#tier-2--the-two-module-discipline)
+the Resolution it returns crosses the client boundary whole, as metadata plus
+client references. The simpler tier keeps manifests behind one `"use client"`
+module and sends **ids** across. See
 [React Server Components](/server-rendering#react-server-components).
 
 ## How do I test a contribution?
 
 Render the component directly with the props the host would give it — no
-provider needed. To test the wiring, render the host inside a `PluginProvider`
-and assert on the output. See [Testing](/recipes#testing-a-contribution).
+provider needed. To test the wiring, resolve and render the host inside a
+`SlotProvider`; to validate the catalog, assert `diagnostics` is empty. See
+[Testing](/recipes#testing-a-contribution).
 
 ## What happens if a contribution throws?
 
-A declared one is caught by the boundary the host places around it: `onError`
-reports it with the `pluginId` and the slot name, and `renderFailed` renders in
-its place. Recovery is the explicit `reset()` — there is no automatic retry.
+A declared one is caught by the boundary around it: `onError` reports it with
+the plugin id, contribution id and slot name, and the `Failed` component
+renders in its place. Recovery is the explicit `reset()` — there is no
+automatic retry.
 
-A runtime fill gets a `Suspense` boundary with a `null` fallback so suspension
+A façade fill gets a `Suspense` boundary with a `null` fallback so suspension
 cannot tear down its own registration. It gets no error boundary: it is your own
 code in your own tree. See [Failure isolation](/failure-isolation).
 
 ## Where do I find an error message?
 
-Every message the library throws or logs is on one page, with its cause and its
-fix — see [Errors](/errors). They all start with `[create-slot]`.
+Every message the library throws or reports is on one page, with its cause and
+its fix — see [Errors](/errors). They all start with `[create-slot]`.

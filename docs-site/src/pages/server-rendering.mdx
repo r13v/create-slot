@@ -1,27 +1,29 @@
 ---
 title: Server rendering
-description: The one SSR requirement, what React Server Components force on a plugin registry, and how streaming works per contribution.
+description: The one SSR requirement, the two React Server Components tiers, and how streaming works per contribution.
 showAskAi: false
 ---
 
 # Server rendering
 
-The declarative channel exists for this. A contribution is data resolved during
-render, so it is in the HTML the server sends — no effects on the render path,
-nothing to wait for.
+The registry exists for this. A contribution is data resolved before render, so
+it is in the HTML the server sends — no effects on the render path, nothing to
+wait for.
 
 ## The contract, in one sentence
 
-**The `plugins` array must be the same, in the same order, on the server and on
+**Give the resolver the same inputs, in the same order, on the server and on
 the client.**
 
-That is all the library asks. Everything else it needs is derived from that
-array during render.
+That is all the library asks. Deep-equal resolutions produce identical markup;
+nothing depends on object identity across the seam.
 
-If the enabled set depends on a tenant, a user or a flag, it is data that has to
-travel with the HTML. Recomputing it on the client is how hydration breaks. The
-library's own test suite proves both directions: identical lists hydrate
-silently, and a different client list produces a mismatch.
+If a tenant, a user or a flag controls the enabled set, that set is data. Send
+it with the HTML and resolve from it on both sides — or resolve once on the
+server and send the Resolution itself (see
+[React Server Components](#react-server-components) below). If you compute the
+set again on the client from something the server did not see, hydration
+breaks. The library's own test suite proves both directions.
 
 ```tsx twoslash
 // [!include ~/snippets/server-rendering-guide.tsx:prelude]
@@ -41,40 +43,36 @@ that has to cross between them is the list of ids:
 ```tsx twoslash
 // [!include ~/snippets/server-rendering-guide.tsx:prelude]
 // [!include ~/snippets/server-rendering-guide.tsx:catalog]
-// [!include ~/snippets/server-rendering-guide.tsx:boundary]
 // ---cut---
 // [!include ~/snippets/server-rendering-guide.tsx:ssr]
 ```
 
-The client reads the same ids back and builds the same array:
+The client reads the same ids back and resolves the same graph:
 
 ```tsx twoslash
 // [!include ~/snippets/server-rendering-guide.tsx:prelude]
 // [!include ~/snippets/server-rendering-guide.tsx:catalog]
-// [!include ~/snippets/server-rendering-guide.tsx:boundary]
 // ---cut---
 // [!include ~/snippets/server-rendering-guide.tsx:hydrate]
 ```
 
-Serialise ids, never plugins: a plugin holds components, which do not survive
-`JSON.stringify`. The catalog that maps an id back to a plugin is ordinary
-client code, imported by both entries.
+Serialise ids, never plugins or resolutions: both hold components, which do not
+survive `JSON.stringify`. The catalog that maps an id back to a plugin is
+ordinary code, imported by both entries.
 
 ## React Server Components
 
-The registry is client-side code, and not by omission. `defineSlot` creates a
-context, `PluginProvider` uses `useMemo` and `useEffect`, and the `react-server`
-build of React exports none of those. So a plugin manifest — and every module
-that reaches one — belongs to the client graph, and a server component that
-imports it does not compile.
+Two tiers, both without codegen. The core entry is what makes them possible:
+`create-slot/core` never imports React at runtime, so a **server component can
+import manifests and call `resolvePlugins`** — only the adapter
+(`SlotProvider`, `SlotHost`, the hooks) is `"use client"`.
+`examples/nextjs-app` ships the second tier.
 
-That is not a limitation on server *rendering*. Client components are still
-rendered on the server, so the declarative channel still reaches the HTML. What
-changes is where the plugin list is assembled and what may cross the boundary.
+### Tier 1 — the client boundary
 
-### The client boundary
-
-One `"use client"` module holds `PluginProvider` and imports the catalog itself.
+Manifests and `SlotProvider` live behind one `"use client"` module; a server
+component sends **ids**, and the client resolves. This is the v3 shape, and it
+remains correct and simple.
 
 ```tsx twoslash
 // [!include ~/snippets/server-rendering-guide.tsx:prelude]
@@ -82,11 +80,6 @@ One `"use client"` module holds `PluginProvider` and imports the catalog itself.
 // ---cut---
 // [!include ~/snippets/server-rendering-guide.tsx:boundary]
 ```
-
-### A server component sends ids
-
-A component or a function cannot be a prop of a server component, so the server
-sends **ids** and the client assembles the list behind the boundary.
 
 ```tsx twoslash
 // [!include ~/snippets/server-rendering-guide.tsx:prelude]
@@ -96,14 +89,55 @@ sends **ids** and the client assembles the list behind the boundary.
 // [!include ~/snippets/server-rendering-guide.tsx:server]
 ```
 
-### The server seam
+### Tier 2 — the two-module discipline
 
-Anything the *server* has to read about a plugin — a loader, a capability key —
-needs a module the server graph can import, separate from the manifest that
-points at it. The consequence is honest and worth stating: a plugin's
-server-side fields are declared twice, once as a manifest field the reader sees
-and once as an entry in the map the server reads. One implementation, two
-references. Deriving one from the other is exactly what RSC forbids.
+Write each manifest as a **plain module** that imports its components from
+`"use client"` files. Then the manifest — and `resolvePlugins` over it — is
+importable from a server component, and the Resolution it returns is
+serializable: metadata plus client references. The server resolves once and
+passes the whole graph across the boundary as a prop.
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:two-module]
+```
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:tier2-server]
+```
+
+### A server host in userland
+
+Under tier 2 a fully server-rendered host is a few lines: `entriesOf` plus the
+exported `ContributionBoundary`, which ships as `"use client"` so the failure
+semantics stay the host's. The components are client references; they hydrate
+under the shell's providers like any other contribution.
+
+```tsx twoslash
+// [!include ~/snippets/server-rendering-guide.tsx:prelude]
+// [!include ~/snippets/server-rendering-guide.tsx:catalog]
+// [!include ~/snippets/server-rendering-guide.tsx:two-module]
+// ---cut---
+// [!include ~/snippets/server-rendering-guide.tsx:server-host]
+```
+
+### The hard walls
+
+Three things do not cross an RSC boundary, and the design leans into each:
+
+- **`useSlotProps` is context**, and therefore client-only. A server host
+  passes serializable props directly, as `ServerPanels` does above.
+- **Functions never cross** — reducers, `setup`, loaders. The module that
+  carries what a server must own regardless of the graph (the **server seam**,
+  `crm-core/server` in the examples) survives both tiers unchanged.
+- **A component defined inside the manifest module itself** is not a client
+  reference and will not cross. The two-module discipline is exactly the rule
+  that prevents this.
 
 ## Streaming
 
@@ -138,8 +172,12 @@ the server produces for it depends on the render path, and the two paths behave
 differently.
 
 **`renderToPipeableStream` handles it.** The shell carries the contribution's
-own skeleton, and the body arrives in a later chunk. That is the mechanism
-[streaming](#streaming) already describes.
+fallback — the provider's `Pending`, or your own inner `Suspense` — and the
+body arrives in a later chunk. That is the mechanism
+[streaming](#streaming) already describes. Set `Pending` knowing the trade: the
+skeleton ships in the streamed shell and React swaps it out — HTML size and
+layout shift for earlier paint. Unset, the fallback is `null` and nothing extra
+ships.
 
 **`renderToString` does not support `Suspense` at all.** React reports this
 itself. A `React.lazy` component therefore never reaches the HTML, and awaiting
@@ -149,21 +187,20 @@ render is synchronous.
 | What you wrote | What `renderToString` produces |
 | --- | --- |
 | `lazy`, plus the contribution's own `Suspense` | React marks the boundary for a client render and emits your fallback as placeholder markup. The content arrives after hydration. |
-| `lazy` on its own | React marks the boundary for a client render and emits nothing for that contribution. |
+| `lazy` on its own | React marks the boundary for a client render and emits the `Pending` fallback, or nothing. |
 
 A render that does not stream therefore has two answers. Either do not defer
-that contribution, or resolve its module before you build the `plugins` array:
+that contribution, or resolve its module before you build the plugin list:
 
 ```tsx twoslash
 // [!include ~/snippets/server-rendering-guide.tsx:prelude]
 // [!include ~/snippets/server-rendering-guide.tsx:catalog]
-// [!include ~/snippets/server-rendering-guide.tsx:boundary]
 // ---cut---
 // [!include ~/snippets/server-rendering-guide.tsx:deferred]
 ```
 
 The client has to build the list the same way. The contract is unchanged: the
-same plugins, in the same order, on both sides. A list the server awaited and
+same inputs, in the same order, on both sides. A list the server awaited and
 the client did not is a different list.
 
 The pages router does not stream, so this is the shape it needs. The app router
@@ -180,11 +217,11 @@ contribution](/recipes#splitting-a-declared-contribution) for the client half.
 
 Two things, both by construction:
 
-- **Runtime fills.** `getServerSnapshot` is empty on the server and during the
-  first hydrating render. Even if a server prepass collected fills, the client
+- **Façade fills.** The runtime channel's server and first hydration snapshots
+  are intentionally empty. Even if a server prepass collected fills, the client
   could not reproduce entries from subtrees it has not reached yet without a
   mismatch. Registration therefore happens in an effect; server markup shows
-  the host's placeholder, and the fill appears after hydration.
+  the façade host's placeholder, and the fill appears after hydration.
 - **Anything a `setup` function registers.** Same reason.
 
 Both are visible in the pages-router [example](/examples): view source and the
@@ -194,18 +231,20 @@ bar still shows its placeholder.
 ## Failure, on the server
 
 `getDerivedStateFromError` never runs on the server, but the `Suspense` boundary
-the host places around every contribution still does its job: React marks just
-that boundary for a client render, keeps the rest of the markup, and the client
-re-renders that one contribution — where the class boundary finally catches it.
-One broken contribution costs its own line, not the page. See
-[Failure isolation](/failure-isolation#on-the-server).
+around every contribution still does its job: React marks just that boundary
+for a client render (`<!--$!-->` in the HTML), keeps the rest of the markup,
+and the client re-renders that one contribution — where the class boundary
+finally catches it. One broken contribution costs its own line, not the page.
+See [Failure isolation](/failure-isolation#on-the-server).
 
 ## A checklist before you ship
 
-1. The `plugins` array is built from data sent with the HTML, not recomputed.
-2. That array is memoised, so the index is not rebuilt on every provider render.
+1. The resolver's inputs are built from data sent with the HTML, not recomputed.
+2. The Resolution is held in a module or a `useMemo` — one line, and it spares
+   the hosts too.
 3. Anything a `setup` loop registers is wrapped in `startTransition`.
-4. Every contribution that has to be in the markup is **declared**, not filled.
+4. Every contribution that has to be in the markup is **declared**, not a
+   façade fill.
 5. A contribution that reads a promise expects its own `Suspense` fallback —
    which the host already places — rather than the layout's.
 6. Every deferred contribution is loaded before a render that does not stream.

@@ -6,19 +6,14 @@ showAskAi: false
 
 # Failure isolation
 
-Every **declared** contribution is wrapped in an error boundary and a `Suspense`
-boundary, placed by the host. That isolation is the host's job, not the
-contribution author's: a plugin comes from somewhere else, and the application
-is the one that has to stay up.
-
-Failure is the host's business. Pending UI is not: the `Suspense` boundary uses
-`fallback={null}`, so add an inner `Suspense` when the contribution needs a
-visible pending state. See [splitting a declared
-contribution](/recipes#splitting-a-declared-contribution).
+Every declared contribution renders inside `ContributionBoundary`: contribution
+identity, an error boundary, and a `Suspense` boundary. That isolation is the
+host's job, not the contribution author's: a plugin comes from somewhere else,
+and the application is the one that has to stay up.
 
 ## On the client
 
-The boundary catches, `renderFailed` renders in place of the contribution, and
+The boundary catches, `Failed` renders in place of the contribution, and
 `onError` reports it.
 
 ```tsx twoslash
@@ -27,17 +22,20 @@ The boundary catches, `renderFailed` renders in place of the contribution, and
 // [!include ~/snippets/failure-isolation-guide.tsx:provider]
 ```
 
-`onError` receives the `pluginId`, the slot name and the error, which is enough
-to attribute a failure to a feature without the feature cooperating.
+`onError` receives the plugin id, the contribution id, the slot name and the
+error — enough to attribute a failure to a feature without the feature
+cooperating.
 
 | prop | when it runs | what it gets |
 | --- | --- | --- |
-| `onError` | once, when the boundary catches | `{ pluginId, slot, error }` |
-| `renderFailed` | on every render while the boundary holds an error | the same, plus `reset` |
+| `onError` | once, when the boundary catches | `{ pluginId, contributionId, slot, error }` |
+| `Failed` | on every render while the boundary holds an error | the same, plus `reset` |
 
-Both live in a context of their own, read only where a contribution is isolated,
-so writing them inline — which is how everyone writes them — never re-renders a
-host. See [Performance](/performance#keep-the-plugin-list-stable).
+`Failed` is a **component**, not a render prop: a component reference has
+stable identity and crosses an RSC boundary, where a closure cannot. The
+handlers live in a context of their own, read only where a contribution is
+isolated, so an inline `onError` arrow never re-renders a host. See
+[Performance](/performance).
 
 ### What a boundary does not catch
 
@@ -53,6 +51,15 @@ not catch:
 A contribution that does async work handles its own failures, or throws during
 the next render so the boundary can see it.
 
+## Pending
+
+The same `Suspense` boundary has a fallback: `Pending`, a component receiving
+`{ pluginId, contributionId, slot }`, renders while a
+[deferred contribution](/server-rendering#a-deferred-contribution) loads. Unset
+it and the fallback is `null` — byte-for-byte the v3 shell. Set it knowing the
+trade: the skeleton ships in the streamed shell and React swaps it out — HTML
+size and layout shift for earlier paint.
+
 ## On the server
 
 `getDerivedStateFromError` never runs during a server render, so the class
@@ -61,14 +68,14 @@ boundary cannot catch there. The `Suspense` boundary still does its job:
 1. React marks just that boundary for a client render — `<!--$!-->` in the HTML.
 2. The rest of the markup is kept and sent.
 3. The client re-renders that one contribution, where the class boundary
-   finally catches it and `renderFailed` takes over.
+   finally catches it and `Failed` takes over.
 
 One broken contribution costs its own line, not the page. This holds for both
 `renderToString` and `renderToPipeableStream`.
 
 ## There is no automatic reset
 
-Recovery is the explicit `reset()` handed to `renderFailed`, and nothing else.
+Recovery is the explicit `reset()` handed to `Failed`, and nothing else.
 
 Resetting on element identity would loop: a host that re-renders in response to
 `onError` produces a fresh element every time, so the boundary would clear,
@@ -76,15 +83,25 @@ throw, clear, throw. The boundary sits directly around the contribution in the
 same commit, so React's own behaviour is enough — a button is the honest
 alternative to a loop.
 
-## Runtime fills get only `Suspense`
+## Hand-rolled hosts keep the same semantics
 
-A host wraps each runtime fill in `Suspense` with a `null` fallback. This is a
+`ContributionBoundary` is exported so a host you write yourself — a
+`renderEntries` layout, or an
+[RSC server host](/server-rendering#a-server-host-in-userland) mapping a
+Resolution with `entriesOf` — isolates each entry exactly as the default host
+does. It reads `onError`, `Failed` and `Pending` from the nearest
+`SlotProvider`.
+
+## Façade fills get only `Suspense`
+
+A façade host wraps each fill in `Suspense` with a `null` fallback. This is a
 safety boundary: without it, a suspended host can hide the subtree that
 registered the fill, remove that registration, reveal it and repeat forever.
 
-There is still no error boundary or plugin identity. A fill is your own code in
-your own tree, not a third party's contribution, so failure isolation remains
-yours. Add an inner `Suspense` when the pending state needs visible UI.
+There is still no error boundary and no contribution identity. A fill is your
+own code in your own tree, not a third party's contribution, so failure
+isolation remains yours. Add an inner `Suspense` when the pending state needs
+visible UI.
 
 ```tsx twoslash
 // [!include ~/snippets/failure-isolation-guide.tsx:prelude]
@@ -96,10 +113,10 @@ If a fill can throw, bring your own error boundary. The SPA example does exactly
 that — its crash-test feature ships one, because the runtime channel leaves
 errors to you.
 
-## Per-plugin identity
+## Per-contribution identity
 
-While a contribution renders, `usePluginId` is the one thing only the library
-knows: which plugin's entry the host is on.
+While a contribution renders, `useContribution` is the one thing only the
+library knows: which contribution it is — slot, plugin id, contribution id.
 
 ```tsx twoslash
 // [!include ~/snippets/failure-isolation-guide.tsx:prelude]
@@ -107,8 +124,8 @@ knows: which plugin's entry the host is on.
 // [!include ~/snippets/failure-isolation-guide.tsx:plugin-id]
 ```
 
-It throws outside a contribution rendered by a host, which is what makes it
-usable as the key to a per-plugin store, logger or settings namespace.
+It throws outside a contribution, which is what makes it usable as the key to a
+per-plugin store, logger or settings namespace.
 
 ## Next
 

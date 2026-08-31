@@ -1,13 +1,14 @@
 ---
 title: Errors
-description: Every message create-slot throws or logs, what causes it, and the fix — plus the type errors that catch the same mistakes before they run.
+description: Every message create-slot throws, every diagnostic the resolver reports, and the type errors that catch the same mistakes before they run.
 showAskAi: false
 ---
 
 # Errors
 
-The library throws in six places and logs in one. Every message starts with
-`[create-slot]`, so a search for that prefix finds all of them.
+The library throws in six places, reports manifest defects as **diagnostics**,
+and logs in two. Every message starts with `[create-slot]`, so a search for
+that prefix finds all of them.
 
 Most of these mistakes are caught by TypeScript first. Where that is true, the
 type error is shown next to the runtime one.
@@ -16,8 +17,8 @@ type error is shown next to the runtime one.
 
 ### `'defineSlot' requires a non-empty name`
 
-The registry keys contributions by slot name. An empty name is two slots quietly
-sharing one bucket, so it is refused at the call.
+The Resolution keys contributions by slot name. An empty name is two slots
+quietly sharing one bucket, so it is refused at the call.
 
 ```tsx twoslash
 // [!include ~/snippets/errors-guide.tsx:prelude]
@@ -25,13 +26,12 @@ sharing one bucket, so it is refused at the call.
 // [!include ~/snippets/errors-guide.tsx:slot-name]
 ```
 
-Names are global to one client. Use a stable, application-wide string, and
-prefix names that a library exports.
+Use a stable, application-wide string, and prefix names that a library exports.
 
 ### `'definePlugin' requires a non-empty id`
 
-The id becomes part of every contribution's React key, so it has to identify the
-plugin.
+The id namespaces every contribution id and React key, so it has to identify
+the plugin.
 
 ```tsx twoslash
 // [!include ~/snippets/errors-guide.tsx:prelude]
@@ -39,13 +39,16 @@ plugin.
 // [!include ~/snippets/errors-guide.tsx:plugin-id]
 ```
 
-### `Slot host rendered outside of 'PluginProvider'`
+A contribution's id, by contrast, is validated by the resolver: a plugin's typo
+surfaces as a [diagnostic](#diagnostics), not a throw at import time.
 
-A host created with `defineSlot` reads the declared index from context. No
-provider means the application never mounted the registry, which is a mistake
-worth reporting rather than an empty slot.
+### `'SlotHost' rendered outside of 'SlotProvider'`
 
-Mount `PluginProvider` above every host:
+`SlotHost` reads the Resolution from context. No provider means the application
+never mounted the registry, which is a mistake worth reporting rather than an
+empty slot.
+
+Mount `SlotProvider` above every host:
 
 ```tsx twoslash
 // [!include ~/snippets/errors-guide.tsx:prelude]
@@ -53,42 +56,42 @@ Mount `PluginProvider` above every host:
 // [!include ~/snippets/errors-guide.tsx:provider]
 ```
 
-`createSlot`'s host is the exception. That API never had a provider, so it
-tolerates a missing one and simply has no declared contributions.
+`createSlot`'s host is the exception. The façade never had a provider, so its
+host renders its factory's fills — or its placeholder — anywhere.
 
 ### `A fill expects a single React element as its child`
 
-`Fill` clones its child to stamp a stable React key on it. A string, a number,
-an array or a fragment of siblings cannot carry one.
+A façade fill clones its child to stamp a stable React key on it. A string, a
+number, an array or a fragment of siblings cannot carry one.
 
 ```tsx twoslash
 // @errors: 2746
-import { defineSlot } from "create-slot"
+import { createSlot } from "create-slot"
 import type { ReactNode } from "react"
 
-const Toolbar = defineSlot("toolbar")
+const Toolbar = createSlot()
 declare function Save(): ReactNode
 declare function Undo(): ReactNode
 // ---cut---
 // Two children: throws at render.
 export function Broken() {
   return (
-    <Toolbar.Fill>
+    <Toolbar>
       <Save />
       <Undo />
-    </Toolbar.Fill>
+    </Toolbar>
   )
 }
 
 // One element that contains both.
 export function Fixed() {
   return (
-    <Toolbar.Fill>
+    <Toolbar>
       <>
         <Save />
         <Undo />
       </>
-    </Toolbar.Fill>
+    </Toolbar>
   )
 }
 ```
@@ -114,53 +117,80 @@ export function Broken() {
 To contribute nothing, do not render the `Slot` at all — installing a runtime
 feature is mounting it, so uninstalling it is `&&`.
 
-### `'usePluginId' called outside of a plugin contribution`
+### `'useContribution' called outside of a plugin contribution`
 
-`usePluginId` reads a context the host provides around each **declared**
-contribution. It throws anywhere else, including inside a runtime fill, which
-belongs to no plugin.
+`useContribution` reads the context `ContributionBoundary` provides around each
+declared contribution. It throws anywhere else, including inside a façade fill,
+which belongs to no plugin.
 
 ```tsx twoslash
 // [!include ~/snippets/errors-guide.tsx:prelude]
 // ---cut---
-// [!include ~/snippets/errors-guide.tsx:use-plugin-id]
+// [!include ~/snippets/errors-guide.tsx:use-contribution]
 ```
 
 That throw is what makes the hook usable as a store key: it cannot silently
 return the wrong plugin.
 
+## Diagnostics
+
+The resolver never throws over a manifest defect — a typo in one plugin must
+not take the application down. Problems come back on
+`resolution.diagnostics`, and in development the provider prints each set once
+per content change with `console.error`.
+
+```tsx twoslash
+// [!include ~/snippets/errors-guide.tsx:prelude]
+// ---cut---
+// [!include ~/snippets/errors-guide.tsx:diagnostics]
+```
+
+| code | meaning |
+| --- | --- |
+| `duplicate-plugin-id` | Two plugins share an id, so every contribution id they carry collides. |
+| `duplicate-contribution-id` | Two contributions resolve to one full id. The first declaration wins; the second is dropped. |
+| `invalid-contribution-id` | A contribution id is empty or contains `/`. The contribution is dropped. |
+| `unknown-disable-target` | `disable` names a plugin or contribution that nothing in the list carries. |
+| `unknown-override-target` | An override targets a full id that nothing in the list carries. |
+| `override-slot-mismatch` | An override created by one slot targets a contribution of another. The patch is ignored. |
+
+Disabling is the integrator's intent, not a defect — a disabled target that
+exists produces no diagnostic. Names, versions, capabilities and routes are
+your own manifest fields, so they are yours to check — see
+[Recipes](/recipes#exclusive-claims).
+
 ## Logged warnings
 
-### `Duplicate plugin id "x"`
+### The host for "x" was given both `renderEntries` and children
 
-> `[create-slot] Duplicate plugin id "pricing": its contributions collide with
-> the earlier plugin's React keys.`
+> `[create-slot] The host for "toolbar" was given both 'renderEntries' and
+> children; children are ignored while 'renderEntries' is set.`
 
-Logged with `console.error` in development only, from an effect in
-`PluginProvider`. Two plugins that share an id produce two contributions with
-the same React key, so React keeps one and drops the other.
-
-This is the only thing the library checks about a manifest. Names, versions,
-capabilities and routes are your own fields, so they are yours to check — see
-[Recipes](/recipes#exclusive-claims).
+Logged with `console.error` in development only. `renderEntries` owns the empty
+state, so the children could never render — one of the two has to go.
 
 ## Type errors
 
 These never reach runtime. They are listed because the message names a
 structural type, and the cause is easier to see in an example.
 
-### A prop the host does not have
+### A missing or mismatched props bag
 
-`defineSlot` with no type parameter declares a host with no props of its own.
+`props` is an explicit bag typed by the slot. It is required as soon as the
+slot declares props, and its values are checked against them.
 
 ```tsx twoslash
-// @errors: 2322
-import { defineSlot } from "create-slot"
+// @errors: 2741 2322
+import { defineSlot, SlotHost } from "create-slot"
 
-const StatusBar = defineSlot("status-bar")
+const NavMenu = defineSlot<{ current: string }>("nav-menu")
 // ---cut---
-export function Shell() {
-  return <StatusBar.Host label="Ready" />
+export function Missing() {
+  return <SlotHost slot={NavMenu} />
+}
+
+export function Mismatched() {
+  return <SlotHost slot={NavMenu} props={{ current: 42 }} />
 }
 ```
 
@@ -187,25 +217,25 @@ function PricingItem({ href }: { href: string }) {
   return <li>{href}</li>
 }
 
-const contribution = NavMenu.contribute({ component: PricingItem })
+const contribution = NavMenu.contribute("nav-item", { component: PricingItem })
 ```
 
 A contribution may accept fewer props than the host provides — that is ordinary
 assignability — but never different ones.
 
-### `useProps()` is possibly null
+### `useSlotProps()` is possibly null
 
-`defineSlot`'s `useProps` returns `Props | null`, because a `Fill` element cannot
-promise that a host is above it.
+`useSlotProps` returns `Props | null`, because nothing guarantees a host above
+the caller.
 
 ```tsx twoslash
 // @errors: 18047
-import { defineSlot } from "create-slot"
+import { defineSlot, useSlotProps } from "create-slot"
 
 const NavMenu = defineSlot<{ current: string }>("nav-menu")
 // ---cut---
 function Item() {
-  const props = NavMenu.useProps()
+  const props = useSlotProps(NavMenu)
 
   return <li>{props.current}</li>
 }
@@ -226,11 +256,13 @@ inside a host.
 
 ### Hydration mismatch
 
-The server and the client were given different `plugins` arrays, or the same
-array in a different order. That list is the library's only SSR requirement —
+The server and the client resolved from different inputs, or the same inputs in
+a different order. Matching inputs are the library's only SSR requirement —
 see [the SSR contract](/server-rendering#the-contract-in-one-sentence).
 
-Send the enabled ids with the HTML instead of recomputing them on the client.
+Send the enabled ids with the HTML instead of recomputing them on the client —
+or resolve on the server and send
+[the Resolution itself](/server-rendering#react-server-components).
 
 ### `This Suspense boundary received an update before it finished hydrating`
 
@@ -243,9 +275,10 @@ the registration in `startTransition` — see
 
 ### A missing key warning
 
-Not from this library. Both channels assign keys themselves: declared
-contributions get `pluginId#index`, and fills get a key stamped on the cloned
-element when they mount. A key warning points at a list of your own.
+Not from this library. Every host keys declared contributions with the full id
+`pluginId/contributionId`, and a façade fill gets a key stamped on the cloned
+element when it mounts. A key warning points at a list of your own — including
+wrappers you build in `renderEntries`, which should be keyed with `entry.key`.
 
 ## Next
 

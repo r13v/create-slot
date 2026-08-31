@@ -39,7 +39,7 @@ Three files, and only the router is Next-specific:
 | File                                           | What it does                                                          |
 | ---------------------------------------------- | --------------------------------------------------------------------- |
 | [lib/crm-server.ts](lib/crm-server.ts)         | Decides which plugins this request gets, and preloads their state     |
-| [pages/\_app.tsx](pages/_app.tsx)              | Rebuilds the same list on the client and hands it to `PluginProvider` |
+| [pages/\_app.tsx](pages/_app.tsx)              | Resolves the same list on the client and hands the `Resolution` to `SlotProvider` |
 | [components/layout.tsx](components/layout.tsx) | The chrome, including the runtime channel's host                      |
 
 Each page is then four lines — `getServerSideProps` plus a shared page
@@ -47,8 +47,9 @@ component. See [pages/deals/index.tsx](pages/deals/index.tsx).
 
 ## The SSR contract
 
-`create-slot` asks for exactly one thing: **the `plugins` array must be the same,
-in the same order, on the server and on the client.**
+`create-slot` asks for exactly one thing: **the resolver's inputs must be the
+same, in the same order, on the server and on the client** — deep-equal
+resolutions produce identical markup.
 
 So the enabled set is data that travels with the HTML, in `pageProps`. Try
 `?plugins=pipeline,email` — the response contains fewer contributions, and the

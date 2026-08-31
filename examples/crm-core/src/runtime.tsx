@@ -1,5 +1,5 @@
 import { combineReducers, configureStore, type Reducer } from "@reduxjs/toolkit"
-import { usePluginId } from "create-slot"
+import { useContribution } from "create-slot"
 import {
   createContext,
   type ReactNode,
@@ -131,7 +131,7 @@ export const useViewConflicts = (): string[] => useRuntime().viewConflicts
 /** A plugin's own ephemeral store, addressed by the id the library hands out. */
 export function usePluginStore<T extends object>(): T {
   const { stores } = useRuntime()
-  const id = usePluginId()
+  const { pluginId: id } = useContribution()
   const store = stores[id]
 
   if (!store) {

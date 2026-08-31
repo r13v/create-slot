@@ -1,4 +1,4 @@
-import { usePluginId } from "create-slot"
+import { useContribution } from "create-slot"
 import type { MouseEvent, ReactNode } from "react"
 
 import type { Stage } from "./data"
@@ -38,7 +38,7 @@ export function PluginCard({
   title: string
   children: ReactNode
 }) {
-  const owner = usePluginId()
+  const owner = useContribution().pluginId
 
   return (
     <section className="card card--plugin" data-plugin={owner}>
@@ -53,7 +53,7 @@ export function PluginCard({
 
 /** A row a plugin contributed to a list. */
 export function PluginRow({ children }: { children: ReactNode }) {
-  const owner = usePluginId()
+  const owner = useContribution().pluginId
 
   return (
     <li className="row row--plugin" data-plugin={owner}>

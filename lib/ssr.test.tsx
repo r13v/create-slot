@@ -3,39 +3,51 @@ import type React from "react"
 import { renderToString } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { collectRecoveries, stopCollectingRecoveries } from "../test/recoveries"
+import { trackedFills } from "./facade/create-slot"
 import {
+  createSlot,
   definePlugin,
   defineSlot,
-  PluginProvider,
-  usePluginId,
-} from "./create-slot"
+  type Resolution,
+  resolvePlugins,
+  SlotHost,
+  SlotProvider,
+  useContribution,
+} from "./index"
 
 const NavMenu = defineSlot<{ current: string }>("nav-menu")
 
 function PricingNavItem({ current }: { current: string }) {
   return (
     <li>
-      pricing in {usePluginId()} {current === "/pricing" ? "(current)" : ""}
+      pricing in {useContribution().pluginId}{" "}
+      {current === "/pricing" ? "(current)" : ""}
     </li>
   )
 }
 
 const pricing = definePlugin({
   id: "pricing",
-  contributes: [NavMenu.contribute({ order: 0, component: PricingNavItem })],
+  contributes: [
+    NavMenu.contribute("nav-item", { order: 0, component: PricingNavItem }),
+  ],
 })
 
 const reports = definePlugin({
   id: "reports",
   contributes: [
-    NavMenu.contribute({ order: 10, component: () => <li>reports</li> }),
+    NavMenu.contribute("nav-item", {
+      order: 10,
+      component: () => <li>reports</li>,
+    }),
   ],
 })
 
 const broken = definePlugin({
   id: "broken",
   contributes: [
-    NavMenu.contribute({
+    NavMenu.contribute("nav-item", {
       order: 0,
       component: () => {
         throw new Error("boom")
@@ -44,7 +56,7 @@ const broken = definePlugin({
   ],
 })
 
-const renderFailed = ({ pluginId }: { pluginId: string }) => (
+const Failed = ({ pluginId }: { pluginId: string }) => (
   <li>{pluginId} failed</li>
 )
 
@@ -54,19 +66,13 @@ function textOf(html: string): string {
   return host.textContent ?? ""
 }
 
-function App({ current }: { current: string }) {
+function tree(resolution: Resolution) {
   return (
-    <ul>
-      <NavMenu.Host current={current} />
-    </ul>
-  )
-}
-
-function tree(plugins: Parameters<typeof PluginProvider>[0]["plugins"]) {
-  return (
-    <PluginProvider plugins={plugins}>
-      <App current="/pricing" />
-    </PluginProvider>
+    <SlotProvider resolution={resolution}>
+      <ul>
+        <SlotHost slot={NavMenu} props={{ current: "/pricing" }} />
+      </ul>
+    </SlotProvider>
   )
 }
 
@@ -84,8 +90,8 @@ function hydrateInto(html: string, ui: React.ReactElement) {
  * It uses two channels, and a version bump moves messages between them: dev
  * warnings go to `console.error` as a format string plus arguments, so every
  * argument counts, while a recoverable error — a hydration mismatch, or a
- * Suspense boundary the server could not finish — goes to `reportError`, which
- * jsdom turns into a window error event.
+ * Suspense boundary the server could not finish — goes to `reportError`,
+ * which jsdom turns into a window error event.
  */
 function collectReports() {
   const reports: string[] = []
@@ -94,14 +100,7 @@ function collectReports() {
     reports.push(args.map(String).join(" ")),
   )
 
-  const onError = (event: ErrorEvent) => {
-    // Otherwise the test runner counts it as an unhandled error.
-    event.preventDefault()
-    reports.push(String(event.error ?? event.message))
-  }
-
-  window.addEventListener("error", onError)
-  stopCollecting = () => window.removeEventListener("error", onError)
+  collectRecoveries(reports)
 
   return {
     all: reports,
@@ -111,39 +110,38 @@ function collectReports() {
   }
 }
 
-let stopCollecting: (() => void) | null = null
-
 afterEach(() => {
-  stopCollecting?.()
-  stopCollecting = null
+  stopCollectingRecoveries()
   vi.restoreAllMocks()
 })
 
 describe("registry SSR", () => {
   it("renders contributions into the server HTML, in order", () => {
-    const html = renderToString(tree([pricing, reports]))
+    const html = renderToString(tree(resolvePlugins([pricing, reports])))
     const text = textOf(html)
 
-    // usePluginId() and the host's props both work during a server render.
+    // useContribution() and the host's props both work during a server render.
     expect(text).toContain("pricing in pricing (current)")
     expect(text.indexOf("pricing in")).toBeLessThan(text.indexOf("reports"))
   })
 
   it("hydrates the server HTML without a mismatch", () => {
-    const html = renderToString(tree([pricing, reports]))
+    // The contract asks for the same INPUTS, not the same object: two
+    // resolutions of one plugin list are deep-equal, and that is enough.
+    const html = renderToString(tree(resolvePlugins([pricing, reports])))
     const reported = collectReports()
 
-    hydrateInto(html, tree([pricing, reports]))
+    hydrateInto(html, tree(resolvePlugins([pricing, reports])))
 
     expect(reported.all).toEqual([])
   })
 
   it("mismatches when the client is given a different plugin list", () => {
-    const html = renderToString(tree([pricing, reports]))
+    const html = renderToString(tree(resolvePlugins([pricing, reports])))
     const reported = collectReports()
 
     // The library's whole SSR contract in one negative test.
-    hydrateInto(html, tree([pricing]))
+    hydrateInto(html, tree(resolvePlugins([pricing])))
 
     expect(reported.text).toMatch(/server|hydrat/i)
   })
@@ -152,39 +150,42 @@ describe("registry SSR", () => {
     const sameOrder = definePlugin({
       id: "reports",
       contributes: [
-        NavMenu.contribute({ order: 0, component: () => <li>reports</li> }),
+        NavMenu.contribute("nav-item", {
+          order: 0,
+          component: () => <li>reports</li>,
+        }),
       ],
     })
 
-    const html = renderToString(tree([pricing, sameOrder]))
+    const html = renderToString(tree(resolvePlugins([pricing, sameOrder])))
     const reported = collectReports()
 
     // Equal ranks are broken by list position, so reordering the list is a
     // different markup — the sneakier half of "the same list, in the same
     // order".
-    hydrateInto(html, tree([sameOrder, pricing]))
+    hydrateInto(html, tree(resolvePlugins([sameOrder, pricing])))
 
     expect(reported.text).toMatch(/server|hydrat/i)
   })
 
-  it("leaves a runtime fill out of the server HTML, then adds it on the client", () => {
-    const Menu = defineSlot("runtime-only")
+  it("leaves a façade fill out of the server HTML, then adds it on the client", () => {
+    const Menu = createSlot()
 
-    const tree = (
-      <PluginProvider plugins={[]}>
+    const ui = (
+      <>
         <ul>
           <Menu.Host>
             <li>placeholder</li>
           </Menu.Host>
         </ul>
-        <Menu.Fill>
+        <Menu>
           <li>runtime</li>
-        </Menu.Fill>
-      </PluginProvider>
+        </Menu>
+      </>
     )
 
     const reported = collectReports()
-    const html = renderToString(tree)
+    const html = renderToString(ui)
 
     // Registering from a layout effect is what a server render complains
     // about, and jsdom is exactly where the library has to choose: `window`
@@ -196,7 +197,7 @@ describe("registry SSR", () => {
     expect(textOf(html)).toContain("placeholder")
     expect(textOf(html)).not.toContain("runtime")
 
-    const { container } = hydrateInto(html, tree)
+    const { container, unmount } = hydrateInto(html, ui)
 
     // Hydration matches what the server sent; the fill arrives in the effect
     // that follows it.
@@ -206,67 +207,41 @@ describe("registry SSR", () => {
     expect(
       Array.from(container.querySelectorAll("li")).map((li) => li.textContent),
     ).toEqual(["runtime"])
-  })
 
-  it("threads a runtime fill between two declared ones after hydration", () => {
-    const html = renderToString(tree([pricing, reports]))
-    const reported = collectReports()
+    unmount()
 
-    const { container } = hydrateInto(
-      html,
-      <PluginProvider plugins={[pricing, reports]}>
-        <App current="/pricing" />
-        <NavMenu.Fill order={5}>
-          <li>runtime</li>
-        </NavMenu.Fill>
-      </PluginProvider>,
-    )
-
-    // The fill is absent from the markup being hydrated and arrives in the
-    // effect after it, so it takes its rank without a mismatch.
-    expect(html).not.toContain("runtime")
-    expect(
-      reported.all.filter((report) => /hydrat|server/i.test(report)),
-    ).toEqual([])
-    expect(
-      Array.from(container.querySelectorAll("li")).map((li) =>
-        li.textContent?.trim(),
-      ),
-    ).toEqual(["pricing in pricing (current)", "runtime", "reports"])
+    expect(trackedFills(Menu)).toEqual({ entries: 0, listeners: 0 })
   })
 
   it("renders the same markup whatever the client has registered", () => {
-    const Menu = defineSlot("ssr-shared-store")
-    const first = renderToString(tree([pricing, reports]))
+    const Menu = createSlot()
+    const first = renderToString(tree(resolvePlugins([pricing, reports])))
 
-    // A live client tree, putting fills into the module-level store in between
-    // the two server renders.
+    // A live client tree, filling a façade store in between the two server
+    // renders.
     render(
-      <PluginProvider plugins={[]}>
+      <>
         <ul>
           <Menu.Host />
         </ul>
-        <Menu.Fill>
+        <Menu>
           <li>client only</li>
-        </Menu.Fill>
-      </PluginProvider>,
+        </Menu>
+      </>,
     )
 
-    const second = renderToString(tree([pricing, reports]))
+    const second = renderToString(tree(resolvePlugins([pricing, reports])))
     const sharedSlot = renderToString(
-      <PluginProvider plugins={[]}>
-        <ul>
-          <Menu.Host>
-            <li>placeholder</li>
-          </Menu.Host>
-        </ul>
-      </PluginProvider>,
+      <ul>
+        <Menu.Host>
+          <li>placeholder</li>
+        </Menu.Host>
+      </ul>,
     )
 
-    // The store belongs to this loaded copy of the module. Concurrent server
-    // renders are safe because none reads it — `getServerSnapshot` is empty by
-    // construction — and that is the same property that makes server markup a
-    // function of the plugin list alone, byte for byte.
+    // `getServerSnapshot` is empty by construction, so server markup is a
+    // function of the resolution alone, byte for byte — even while a client
+    // tree in the same process holds live fills.
     expect(second).toBe(first)
     expect(textOf(sharedSlot)).toBe("placeholder")
   })
@@ -274,19 +249,23 @@ describe("registry SSR", () => {
   it("refuses a host outside the provider on the server too", () => {
     const Orphan = defineSlot("ssr-orphan")
 
-    expect(() => renderToString(<Orphan.Host />)).toThrow(
-      "[create-slot] Slot host rendered outside of 'PluginProvider'",
+    expect(() => renderToString(<SlotHost slot={Orphan} />)).toThrow(
+      "[create-slot] 'SlotHost' rendered outside of 'SlotProvider'",
     )
   })
 
   it("isolates a failing contribution on the server too", () => {
-    const tree = (
-      <PluginProvider plugins={[broken, reports]} renderFailed={renderFailed}>
-        <App current="/" />
-      </PluginProvider>
+    const resolution = resolvePlugins([broken, reports])
+
+    const ui = (
+      <SlotProvider resolution={resolution} Failed={Failed}>
+        <ul>
+          <SlotHost slot={NavMenu} props={{ current: "/" }} />
+        </ul>
+      </SlotProvider>
     )
 
-    const html = renderToString(tree)
+    const html = renderToString(ui)
 
     // `getDerivedStateFromError` does not run on the server, but the Suspense
     // boundary around each contribution does its job: React marks just that
@@ -296,10 +275,10 @@ describe("registry SSR", () => {
 
     const reported = collectReports()
 
-    hydrateInto(html, tree)
+    hydrateInto(html, ui)
 
     // On the client the same boundary re-renders, the class boundary catches,
-    // and the host's fallback finally appears.
+    // and the Failed component finally appears.
     expect(
       Array.from(document.querySelectorAll("li")).map((li) => li.textContent),
     ).toEqual(["broken failed", "reports"])

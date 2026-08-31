@@ -1,37 +1,41 @@
 ---
 title: Two channels
-description: A contribution is either data plus a component, or an element from where it is mounted. That difference decides everything else.
+description: A contribution is either data plus a component in the registry, or an element in the createSlot façade. The two never merge, and that difference decides everything else.
 showAskAi: false
 ---
 
 # Two channels
 
-A contribution reaches a host in one of two ways, and the two differ in what a
-contribution *is*. Everything else — whether it appears in server HTML, whether
-one feature's contributions can share `useState`, whether an error boundary
-wraps it — follows from that.
+A contribution reaches a host through one of two channels, and the two differ
+in what a contribution *is*. Everything else — whether it appears in server
+HTML, whether one feature's parts can share `useState`, whether an error
+boundary wraps it — follows from that.
+
+Since 4.0 the two channels are two APIs with two hosts. The registry is the
+declarative channel, whole; the runtime channel lives entirely inside the
+[`createSlot()` façade](/api#createslot). The registry never merges fills.
 
 ## The short answer
 
-**Declarative for anything that must be in the HTML. Runtime for chrome that
-depends on live tree state.**
+**The registry for anything that must be in the HTML. The façade for chrome
+that depends on live tree state.**
 
 If one question decides it, it is this: *does the contribution have to exist
 before hydration?* Navigation, above-the-fold content, anything a crawler reads,
-anything whose late arrival shifts the layout — declarative. A status entry that
-exists only while a dialog is open, a badge a row puts up about its own
-selection — runtime.
+anything whose late arrival shifts the layout — the registry. A status entry
+that exists only while a dialog is open, a badge a row puts up about its own
+selection — the façade.
 
-When neither applies, prefer declarative. It is the primary channel, it costs
+When neither applies, prefer the registry. It is the primary channel, it costs
 nothing extra, and it is the one that keeps its options open.
 
 The rest of this page is why.
 
 ## Declarative: data plus a component
 
-`slot.contribute()` produces a plain object: a slot name, an `order`, and a
-component. A plugin carries a list of them, and the provider builds an index
-from the plugin array **during render**.
+`slot.contribute(id, spec)` produces a plain object: a slot name, a required
+id, an `order`, and a component. A plugin carries a list of them, and
+`resolvePlugins` turns the plugin list into a `Resolution` **before render**.
 
 ```tsx twoslash
 // [!include ~/snippets/channels-guide.tsx:prelude]
@@ -39,24 +43,23 @@ from the plugin array **during render**.
 // [!include ~/snippets/channels-guide.tsx:declarative]
 ```
 
-Because the index is built during render, a host can enumerate its
-contributions synchronously — which is exactly what a server render needs. This
-is the primary channel.
+Because the graph is resolved before render, a host enumerates its
+contributions synchronously — which is exactly what a server render needs, and
+what lets the whole Resolution
+[cross an RSC boundary](/server-rendering#react-server-components). This is
+the primary channel.
 
 ## Runtime: an element from where it is mounted
 
-`slot.Fill` renders nothing where it sits. It registers its child element into
-the slot for as long as it is mounted, and every mounted host for that slot
-renders it.
+A `createSlot()` factory's slot component renders nothing where it sits. It
+registers its child element into the factory's private store for as long as it
+is mounted, and every mounted host of that factory renders it.
 
 ```tsx twoslash
 // [!include ~/snippets/channels-guide.tsx:prelude]
 // ---cut---
 // [!include ~/snippets/channels-guide.tsx:runtime]
 ```
-
-`createSlot` is a façade over exactly this: `createSlot()` is `defineSlot`
-under a generated name, and the `Slot` it returns *is* the `Fill`.
 
 This channel cannot reach server markup. Its server and first hydration
 snapshots are both empty: the client cannot reproduce fills from subtrees it has
@@ -65,42 +68,47 @@ after hydration.
 
 ## The comparison
 
-| | Declarative | Runtime |
+| | Registry (declarative) | Façade (runtime) |
 | --- | --- | --- |
-| A contribution is | data plus a component | an element |
-| Registered | during render, from the plugin list | from an effect, while mounted |
+| A contribution is | data plus a component, under an id | an element |
+| Registered | before render, by `resolvePlugins` | from an effect, while mounted |
 | In server HTML | **yes** | no |
-| Needs `PluginProvider` | yes | no |
-| Stored in | the nearest provider's index | a module-level store shared across React roots |
-| Host boundary per contribution | error + `Suspense`, `null` fallback | `Suspense` with a `null` fallback |
-| One feature's contributions share `useState` | no — they are separate subtrees | yes — one subtree |
+| Host | `SlotHost`, under `SlotProvider` | the factory's own `Host`, no provider |
+| Addressable | by full id: `disable`, `override`, diagnostics | no identity |
+| Isolation per contribution | identity + error boundary + `Suspense` | `Suspense` with a `null` fallback |
+| One feature's parts share `useState` | no — separate subtrees | yes — one subtree |
 | Reads host props via | its own props | `useProps()` |
-| Turning a feature off | filter the plugin array | stop rendering it |
+| Turning a feature off | resolve without it, or `disable` by id | stop rendering it |
 
-The runtime store belongs to the loaded copy of `create-slot`, not to a
-`PluginProvider`. Two roots using that copy address the same named slots; two
-providers still keep separate declarative indexes.
+The façade's store belongs to the factory, not to a module-level registry: two
+factories can never exchange fills, and two React roots using one factory
+always do.
 
 ## What each choice costs
 
-Reach for the declarative channel when the contribution is navigation,
-above-the-fold content, anything a crawler reads, or anything whose absence
-during hydration would shift the layout. You get server rendering, streaming
+Reach for the registry when the contribution is navigation, above-the-fold
+content, anything a crawler reads, or anything whose absence during hydration
+would shift the layout. You get server rendering, streaming, addressable ids
 and per-contribution failure isolation, and you pay for it by giving up the
 shared React subtree: a plugin's contributions no longer share ordinary
 `useState`, so shared state needs [a store](/state). In exchange you get
 per-contribution memoisation — see [Performance](/performance).
 
-Reach for the runtime channel when the contribution genuinely is not known up
-front — a status bar entry that exists only while a dialog is open, a badge a
-row puts up about its own selection, chrome that depends on where in the tree
-it happens to be mounted. A feature stays one subtree, so its parts share
-ordinary state, and installing it is mounting it. You pay for it with SSR.
+Reach for the façade when the contribution genuinely is not known up front — a
+status bar entry that exists only while a dialog is open, a badge a row puts up
+about its own selection, chrome that depends on where in the tree it happens to
+be mounted. A feature stays one subtree, so its parts share ordinary state, and
+installing it is mounting it. You pay for it with SSR, identity and isolation —
+it is the application's own code in the application's own tree.
 
-## Mixing them
+## Using both
 
-Both channels feed the same host and rank on the same `order`, so an
-application can use both — even in the same slot.
+An application uses both channels side by side — one registry for the content,
+a façade slot here and there for the live chrome. What no longer exists is a
+*mixed host*: a registry host renders declared contributions only, and a façade
+host renders its factory's fills only. A late client fill can therefore never
+displace markup the server already shipped — that class of hydration bug is
+unrepresentable by construction.
 
 ```tsx twoslash
 // [!include ~/snippets/registry-guide.tsx:slots]
@@ -110,17 +118,13 @@ application can use both — even in the same slot.
 // [!include ~/snippets/registry-guide.tsx:mixed]
 ```
 
-When a declared contribution and a fill share one `order`, the declared one
-comes first: it is the one the server also rendered, so the position it already
-occupies in the markup is the position it keeps. See [Ordering](/ordering).
-
-Mixing is a supported shape, not a migration step. A slot that is
-server-rendered from the plugin list and also accepts a live fill is exactly
-what the pages-router [example](/examples) ships.
+The pages-router [example](/examples) ships exactly this shape: every feature
+surface server-rendered from the Resolution, and one façade status bar that
+fills after hydration.
 
 ## Next
 
 - [Plugin registry](/registry) — the declarative channel end to end
 - [Server rendering](/server-rendering) — the one requirement it comes with
-- [Ordering](/ordering) — how the two channels rank against each other
+- [Ordering](/ordering) — how each channel ranks its contributions
 - [Plugin state](/state) — what replaces the shared subtree

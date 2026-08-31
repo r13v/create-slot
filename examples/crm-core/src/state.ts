@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit"
-import { usePluginId } from "create-slot"
+import { useContribution } from "create-slot"
 import { useDispatch, useSelector } from "react-redux"
 
 import { DEALS, type Deal, nextStage, type Stage } from "./data"
@@ -51,11 +51,11 @@ export const useCrmDispatch = () => useDispatch()
  * A plugin's own slice, without the plugin having to name it.
  *
  * The store keys slices by plugin id, and the id is the one thing only the
- * library knows while a contribution renders — so `usePluginId` is what turns a
- * generic hook into "my state".
+ * library knows while a contribution renders — so `useContribution` is what
+ * turns a generic hook into "my state".
  */
 export function usePluginState<T>(): T {
-  const id = usePluginId()
+  const { pluginId } = useContribution()
 
-  return useSelector((state: CrmState) => state[id] as T)
+  return useSelector((state: CrmState) => state[pluginId] as T)
 }
