@@ -83,6 +83,12 @@ jobs:
       - name: Bundle
         run: npm run bundle
 
+      - name: React-server boundary smoke
+        run: npm run test:rsc
+
+      - name: Chunk sharing smoke
+        run: npm run test:chunks
+
       - name: Dry-run package
         run: npm pack --dry-run
 

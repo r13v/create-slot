@@ -1,21 +1,24 @@
 # The registry
 
-The registry is `create-slot`'s declarative channel. Plugins declare their
-contributions as data, so a host can enumerate them during render. The registry
-therefore renders on the server. The package exports all of it from one entry
-point, together with `createSlot`.
+The registry is `create-slot`'s declarative channel — since 4.0, its only
+channel. Plugins declare their contributions as data; `resolvePlugins` turns
+the plugin list into a `Resolution` — one pure, synchronous, deterministic
+function; hosts render what it resolved. The registry therefore renders on the
+server, and the resolved graph itself can cross an RSC boundary.
 
-A contribution is not an element that an effect moves at runtime. A contribution
-is **data plus a component**.
+A contribution is not an element that an effect moves at runtime. A
+contribution is **data plus a component**, under a required id.
 
 ```tsx
-// slots.ts
+// slots.ts — pure data, importable from server modules
 export const NavMenu = defineSlot<{ current: string }>("nav-menu")
 
 // plugins/pricing.tsx
 export const pricing = definePlugin({
   id: "pricing",
-  contributes: [NavMenu.contribute({ order: 10, component: PricingNavItem })],
+  contributes: [
+    NavMenu.contribute("nav-item", { order: 10, component: PricingNavItem }),
+  ],
 })
 
 function PricingNavItem({ current }: { current: string }) {
@@ -24,228 +27,239 @@ function PricingNavItem({ current }: { current: string }) {
   return <li>Pricing {current === "/pricing" && "(current)"}</li>
 }
 
-// app
-;<PluginProvider
-  plugins={enabledPlugins}
-  onError={report}
-  renderFailed={renderPluginError}
->
+// app — the application owns the resolution, and the memo boundary with it
+const resolution = resolvePlugins([pricing, billing], {
+  disable: { contributions: ["billing/beta-banner"] },
+  overrides: [NavMenu.override("pricing/nav-item", { order: 5 })],
+})
+
+;<SlotProvider resolution={resolution} onError={report} Failed={PluginError}>
   <ul>
-    <NavMenu.Host current={route} />
+    <SlotHost slot={NavMenu} props={{ current: route }} />
   </ul>
-</PluginProvider>
+</SlotProvider>
 ```
 
-There is a second channel, `Fill`, for a contribution that you cannot know in
-advance. `create-slot` is a façade over that channel.
+There is a second channel for a contribution that you cannot know in advance —
+the runtime channel — and it lives entirely inside the `createSlot()` façade.
+The registry never merges it.
+
+## The two entry points
+
+| entry              | contents                                                        | graph        |
+| ------------------ | --------------------------------------------------------------- | ------------ |
+| `create-slot/core` | `defineSlot`, `definePlugin`, `resolvePlugins`, `entriesOf`     | React-free   |
+| `create-slot`      | everything above, plus `SlotProvider`, `SlotHost`, `ContributionBoundary`, hooks, `createSlot` | `"use client"` |
+
+`create-slot/core` never imports React at runtime, so a server component, a
+Node script or a test can import it under any condition — CI proves it with
+`npm run test:rsc`. The root entry re-exports the core, so a client module
+needs one import.
 
 ## The API
 
 ```ts
-defineSlot<Props>(name): SlotDefinition<Props>   // { name, Host, Fill, contribute, useProps }
-definePlugin(definition): Plugin       // { id, contributes? } plus your own fields
-<PluginProvider plugins onError? renderFailed? />
-usePluginId(): string
+// core
+defineSlot<Props>(name): Slot<Props>            // { name, contribute, override }
+definePlugin(definition)                        // { id, contributes? } plus your own fields
+resolvePlugins(plugins, options?): Resolution   // { slots, diagnostics }
+entriesOf(resolution, slot): ResolvedEntry<Props>[]
+
+// adapter
+<SlotProvider resolution onError? Failed? Pending? />
+<SlotHost slot props? renderEntries?>placeholder</SlotHost>
+useSlotProps(slot): Props | null
+useContribution(): { slot, pluginId, contributionId }
+<ContributionBoundary pluginId contributionId slot />
+
+// façade — SPA-only, source-compatible with 2.x/3.x
+createSlot<Props>(): RuntimeSlot<Props>
 ```
 
 The library reads two fields of a manifest: `id` and `contributes`.
 
-`usePluginId` returns the id of the plugin whose contribution renders now. Only
-the library knows this value. Use it to give each plugin a store, a prefixed
-logger, a settings namespace, or a telemetry tag.
+A contribution's id is local to its plugin, never contains `/`, and must be
+unique inside it. The full id `${pluginId}/${contributionId}` is the React key
+every host uses, the address `disable` and `override` target, and the name
+diagnostics use. Because the key is the id, inserting or removing a
+neighbouring contribution never remounts the others — the v3 rule about
+fixed-shape `contributes` arrays is gone.
 
-A slot has five members. They divide by channel:
+`useContribution` returns the identity of the contribution rendering now:
+slot, plugin id, contribution id. Only the library knows these values while a
+contribution renders. Use them to give each plugin a store, a prefixed logger,
+a settings namespace, or a telemetry tag.
 
-| member       | channel     | server-rendered |
-| ------------ | ----------- | --------------- |
-| `contribute` | declarative | yes             |
-| `Fill`       | runtime     | no              |
-| `Host`       | both        | —               |
-| `useProps`   | both        | —               |
-| `name`       | —           | —               |
+`SlotHost` renders its own children while no plugin contributes to the slot.
+`props` is an explicit bag, not a spread — so the host's own props can never
+collide with a slot's, and `children` structurally cannot leak into a
+contribution.
 
-`Host` renders its own children while no plugin contributes to the slot. This
-gives a slot a placeholder without more API. `children` belongs to the host, not
-to `Props`. The host never forwards `children` to a contribution.
+## The resolver
 
-## The runtime channel
+`resolvePlugins` is where everything that used to be render-time work
+happens: grouping, `disable`, `override` patches, sorting
+(`order`, then plugin position, then declaration position), key minting.
+Problems come back as **diagnostics** — never thrown, never silently dropped:
 
-```tsx
-<NavMenu.Fill order={10}>
-  <li>Only knowable at runtime</li>
-</NavMenu.Fill>
+```
+duplicate-plugin-id · duplicate-contribution-id · invalid-contribution-id
+unknown-disable-target · unknown-override-target · override-slot-mismatch
 ```
 
-`Fill` renders nothing at its own position. While it stays mounted, it registers
-its element into the slot. Each mounted host for that slot then renders the
-element. The host ranks the element against the declared contributions. If the
-`order` values are equal, the declared contribution wins, because the server
-already shipped that position.
+In development the provider prints them once per content change; a production
+build pays nothing for the printing, and the data is still on the Resolution
+for the application to assert on:
 
-React creates the element where you write the `Fill`, but the host renders it.
-The element therefore reads the host's props with `useProps()`, not as props.
-`Fill` reads `order` and the element's React key one time, at mount. If you
-change `order` later, the fill keeps its position. If you change the content,
-React reconciles the content and does not remount it.
+```ts
+expect(resolvePlugins(PLUGINS).diagnostics).toEqual([])
+```
 
-The runtime channel is the second choice for two reasons:
+That one line in a test is the catalog validator. The Resolution is plain
+data — slot name → sorted entries plus the diagnostics — so an inspector, a
+policy check or a snapshot is a `.map` over it, not a library feature.
 
-- **You cannot render it on the server.** `getServerSnapshot` is empty both on
-  the server and during the first hydrating render. Even if a server prepass
-  collected fills, that first client render could not reproduce entries from
-  subtrees it has not reached yet; including them in the HTML would cause a
-  hydration mismatch. Registration therefore happens in an effect, after
-  hydration. Server markup shows the host's placeholder.
-- **A module-level store holds the fills**, keyed by slot name. The provider does
-  not hold them. Every React root using the same loaded copy of `create-slot`
-  shares it; the declarative index, by contrast, belongs to its provider. This
-  is safe on the server because `getServerSnapshot` never reads the store.
-
-A host wraps each runtime fill in `Suspense` with a `null` fallback. This keeps a
-suspending fill from hiding the subtree that registered it and entering a
-register/unregister loop. It is not third-party failure isolation: no error
-boundary or plugin identity is invented for a fill. Bring an inner `Suspense`
-for visible pending UI and your own error boundary for failures.
+Typed overrides come from the slot, not from a string: a string id cannot
+carry `Props`, so `NavMenu.override(target, { component })` is where the
+replacement component is type-checked.
 
 ## The SSR contract
 
-**Give the same `plugins` array, in the same order, to the server and to the
-client.** The library asks for nothing more. It derives everything else from that
-array during render.
+**Give the resolver the same inputs, in the same order, on the server and on
+the client.** Deep-equal resolutions produce identical markup; nothing depends
+on object identity across the seam.
 
-If a tenant, a user or a flag controls the enabled set, that set is data. Send it
-with the HTML. If you compute it again on the client, hydration breaks.
-`lib/ssr.test.tsx` tests both directions: identical lists hydrate without a
-warning, and a different client list causes a mismatch.
+If a tenant, a user or a flag controls the enabled set, that set is data. Send
+it with the HTML and resolve from it on both sides — or resolve once on the
+server and send the Resolution itself (see React Server Components below). If
+you compute the set again on the client from something the server did not see,
+hydration breaks. `lib/ssr.test.tsx` tests both directions.
 
 ## The cost of a re-render
 
 A host re-renders when a component above it re-renders. The host gives each
 contribution the props it received. Without protection, a state change in one
-feature re-renders all the others. For example, a toolbar with 100 contributions
-would render all 100 because a keystroke went to a search box next to it.
+feature re-renders all the others.
 
-The host therefore compares. It keeps its own props stable while their values
-stay the same. It renders each contribution through a memoised view of the
-author's component. A host whose props did not change re-renders nothing.
-`lib/perf.test.tsx` holds this as a budget. `npm run bench` measures the result:
-approximately 5× on a slot with 100 contributions.
+The host therefore compares, twice. It keeps its own props stable while their
+values stay the same, and it compares each resolved entry **by content** — id,
+rank, component identity — because `resolvePlugins` mints fresh entry objects
+on every call and an application is allowed to call it inline on every render.
+The result, held as budgets in `lib/perf.test.tsx`:
 
-The application must do two things:
+- inline `onError`/`Failed`/`Pending` on the provider re-render nothing below
+  the thin boundary shells;
+- an inline `resolvePlugins()` per render re-renders hosts and shells, and no
+  contribution renders, remounts or commits anything.
 
-- **Keep the plugin list stable.** The library groups and ranks the index one
-  time for each array identity. `plugins={all.filter(isEnabled)}` written inline
-  builds the index again on each render of the provider, and the new index
-  re-renders every host of every slot in it. The contributions themselves are
-  spared, because the memoised view is cached on your component and the host
-  holds its props by value, so those re-renders commit nothing. Hold the list in
-  a `useMemo` or in a module.
-- **Pass props by value when you can.** `zoom={1}` is cheap to compare.
-  `style={{ zoom }}` is a new object each time and counts as a change, as it does
-  for `memo`.
-
-`onError` and `renderFailed` are exempt. They live in their own context, which is
-read only where the library isolates a contribution. Inline functions there never
-reach a host.
-
-A contribution stays plain data. `contribute()` returns the component you gave,
-unchanged. With the same component and a fixed-shape `contributes` array, the
-host's positional key stays stable and an index rebuild does not remount it.
-Keep that array's order and length fixed: inserting or removing an earlier entry
-shifts every later key. Put conditional visibility inside the component, or make
-the independently enabled contribution a plugin of its own.
+Hold the Resolution in a module or a `useMemo` anyway — it is one line, and it
+spares the hosts too. Pass props by value when you can: `zoom={1}` is cheap to
+compare; `style={{ zoom }}` is a new object each time and counts as a change,
+as it would for `memo`.
 
 ## React Server Components
 
-The registry is client-side code. `defineSlot` creates a context, and
-`PluginProvider` uses `useMemo` and `useEffect`. The `react-server` build of
-React exports none of these. A plugin manifest, and each module that imports one,
-therefore belongs to the client graph. A server component that imports a manifest
-does not compile.
+Two tiers, both without codegen. `examples/nextjs-app` ships the second.
 
-This does not prevent server rendering. React still renders client components on
-the server, so the declarative channel still reaches the HTML. Two things change:
-where you assemble the plugin list, and what can cross the boundary.
+**Tier 1 — the client boundary.** Manifests and `SlotProvider` live behind one
+`"use client"` module; a server component sends **ids**, and the client
+resolves. This is the v3 shape, and it remains correct and simple.
 
-- The module that holds `PluginProvider` and the manifests carries `"use client"`
-  and imports the catalog.
-- A server component sends **ids**, not plugins. A component or a function cannot
-  be a prop of a server component.
-- Data that the server must read about a plugin, such as a loader or a capability
-  key, needs a module that the server graph can import. Keep that module separate
-  from the manifest that points to it.
+**Tier 2 — the two-module discipline.** Write each manifest as a plain module
+that imports its components from `"use client"` files. Then the manifest —
+and `resolvePlugins` over it — is importable from a server component, and the
+Resolution it returns is serializable: metadata plus client references. The
+server resolves once and passes the whole graph across the boundary as a prop.
 
-The SSR contract does not change: the same list, in the same order, on both
-sides. `examples/nextjs-app` shows the full integration in five files.
+```tsx
+// app/layout.tsx — a server component
+const resolution = resolvePlugins(enabledPlugins(enabled))
+return <Providers resolution={resolution}>{children}</Providers>
+```
+
+A fully server-rendered host is then eight lines of userland — `entriesOf`
+plus the exported `ContributionBoundary`, which ships as `"use client"` so the
+failure semantics stay the host's (`examples/nextjs-app/app/server-nav.tsx`):
+
+```tsx
+const entries = entriesOf(resolution, NavItems)
+return entries.map((entry) => {
+  const Item = entry.component // typed by the slot — no cast
+  return (
+    <ContributionBoundary key={entry.key} {...identityOf(entry)}>
+      <Item current="/" />
+    </ContributionBoundary>
+  )
+})
+```
+
+The hard walls, stated plainly: `useSlotProps` is context and therefore
+client-only — a server host passes serializable props directly; functions
+(reducers, `setup`, loaders) never cross the boundary, so the seam that
+carries them (`crm-core/server`) survives; and a component defined inside the
+manifest module itself is not a client reference and will not cross.
 
 ## Failure isolation
 
-The host wraps each contribution in an error boundary and a `Suspense` boundary.
+Every contribution renders inside `ContributionBoundary`: contribution
+identity, an error boundary, and a `Suspense` boundary.
 
-On the client, the error boundary catches the error. `renderFailed` renders in
-place of the contribution, and `onError` reports the error. There is no automatic
-reset. A reset on element identity loops, because a host that re-renders in
-response to `onError` creates a new element each time. To recover, call the
-`reset()` function that the library gives to `renderFailed`.
+On the client, the error boundary catches. `Failed` — a component, so its
+identity is stable and it crosses an RSC boundary — renders in place of the
+contribution with `{ pluginId, contributionId, slot, error, reset }` as props;
+`onError` reports. There is no automatic reset: a reset on element identity
+loops, because a host that re-renders in response to `onError` creates a new
+element each time. To recover, call the `reset` you were given.
 
 On the server, `getDerivedStateFromError` does not run, but the `Suspense`
-boundary still works. React marks that one boundary for a client render
-(`<!--$!-->` in the HTML) and keeps the remaining markup. The client then renders
-that one contribution again, and the class boundary catches the error. One broken
-contribution costs its own line, not the page. This applies to `renderToString`
-and to `renderToPipeableStream`. `lib/ssr.test.tsx` and `lib/streaming.test.tsx`
-verify it.
+boundary still works: React marks that one boundary for a client render
+(`<!--$!-->` in the HTML) and keeps the remaining markup. One broken
+contribution costs its own line, not the page. `lib/ssr.test.tsx` and
+`lib/streaming.test.tsx` verify both halves.
+
+`Pending` fills the same `Suspense` while a deferred contribution loads. Unset
+it and the fallback is `null`, byte-for-byte the v3 shell. Set it knowing the
+trade: the skeleton ships in the streamed shell and React swaps it out — HTML
+size and layout shift for earlier paint.
 
 ## Streaming
 
 `renderToPipeableStream` needs nothing more from the library. The `Suspense`
 boundary around each contribution makes streaming useful: a slow contribution
-delays its own line only. The shell goes out immediately, with each other
-contribution and the slow contribution's fallback. The resolved contribution
-arrives in a later chunk, with React's own `$RC` swap script.
-`lib/streaming.test.tsx` asserts both halves.
-
-The Next.js pages router does not stream, so `examples/nextjs-pages` does not
-stream. It loads a contribution's data in `getServerSideProps` and preloads that
-data into the store. `examples/nextjs-app` does stream: a contribution reads a
-promise that the layout did not await, and its card arrives after the remaining
-page.
+delays its own line only; the shell goes out immediately with every other
+contribution in it, and the resolved content arrives in a later chunk with
+React's own `$RC` swap.
 
 Note this risk before you stream: **a state update during hydration destroys
-streamed HTML.** An application's `setup` loop registers commands in an effect,
-which runs while the page still hydrates. If an urgent update reaches a boundary
-that has not hydrated, React discards the streamed markup and renders it again on
-the client. React reports "This Suspense boundary received an update before it
-finished hydrating". To prevent this, wrap the registration in `startTransition`.
-`examples/crm-core/src/runtime.tsx` does this for that reason.
+streamed HTML.** An application's `setup` loop registers commands in an
+effect, which runs while the page still hydrates. Wrap that registration in
+`startTransition` — `examples/crm-core/src/runtime.tsx` does, and says why.
 
 ## What the library does not do
 
-**No `when` predicate.** Visibility has one mechanism: the contribution returns
-`null`. As a result, a host cannot count the contributions that produced
-_output_. The host renders its children when no plugin _contributes_, which is
-not the same condition. If all contributions return `null`, the host wrappers
-emit no DOM, so the container is empty. Use CSS for the visual case:
-`ul:empty::before { content: "no items" }`.
+**No `when` predicate.** Visibility has one mechanism: the contribution
+returns `null`. A host renders its children when no plugin *contributes*,
+which is not the same condition as "nothing is visible". Use CSS for the
+visual case: `ul:empty::before { content: "no items" }`.
 
-**No exclusive slots and no routing.** "Exactly one owner" is a routing problem,
-not a slot problem. Keep the claim in the manifest as an application field, and
-resolve it into one table before render. `resolveViews` in
-`examples/crm-core/src/runtime.tsx` does this in 15 lines for the saved views
-that plugins add to the deal list, and reports the plugin that it refused. That
-check is stronger than a library check, because the application knows the actual
-keys and decides who wins.
+**No policies beyond `disable`.** Limits, allowlists and caps over the
+resolved graph are a `.filter` over `Resolution.slots` the application writes
+with its own vocabulary — and a cross-channel cap was rejected outright: a
+late client fill displacing markup the server already shipped is the class of
+bug this design exists to make unrepresentable (ADR 0004).
 
-**No inventory helper.** The inventory exists because the manifest _is_ data.
-`describeCatalog` in `examples/crm-core/src/catalog.ts` is a `.map` over an array
-that the application owns. In development, the library checks one property of a
-manifest: that plugin ids are unique. An id becomes part of the React key of each
-contribution.
+**No exclusive slots and no routing.** "Exactly one owner" is a table the
+application resolves from data before render — `resolveViews` in
+`examples/crm-core/src/runtime.tsx` does it in 15 lines and reports who was
+refused.
+
+**No inventory helper.** The manifest *is* data; `describeCatalog` in
+`examples/crm-core/src/catalog.ts` is a `.map` over an array the application
+owns.
 
 **No state, no lifecycle and no command registry.** The library knows who
-contributes what, in what order, and what occurs when a contribution breaks. The
-application owns everything else. The manifest is open data that the application
-can extend with its own fields, such as names and capability keys:
+contributes what, in what order, and what occurs when a contribution breaks.
+The application owns everything else. The manifest is open data:
 
 ```ts
 type CrmPlugin = PluginDefinition & {
@@ -264,70 +278,62 @@ types.
 
 ## State: redux and mobx
 
-`examples/crm-core` demonstrates both libraries. Both follow one rule: **assemble
-the state from the catalog before render. Do not inject it in an effect.** An
-effect does not run on the server, so you cannot preload injected state.
+`examples/crm-core` demonstrates both. Both follow one rule: **assemble the
+state from the catalog before render. Do not inject it in an effect.**
 
-- **redux** — a plugin declares `reducer`, and declares `preload` for the
-  server-side initial state of that slice. The application combines the slices
-  from the catalog, not from the enabled list, because you cannot preload a store
-  whose shape depends on a toggle. The server sends the loaded state with the
-  HTML, and the client starts from that state. The `pipeline` and `email` plugins
-  do this.
-- **mobx** — a plugin declares `createStore`. The application creates one
-  instance for each application instance, which on the server means one for each
-  request. A contribution gets its own store through `usePluginId()`. The
-  `telephony` plugin keeps a live call there. That state is ephemeral and
-  client-only, and has nothing to serialise.
+- **redux** — a plugin declares `reducer` and `preload`. The application
+  combines slices from the whole catalog (a store whose shape depends on a
+  toggle cannot be preloaded), the server sends the loaded state with the
+  HTML. The `pipeline` and `email` plugins do this.
+- **mobx** — a plugin declares `createStore`; one instance per application
+  instance, one per request on the server. A contribution reaches its own
+  store through `useContribution().pluginId`. The `telephony` plugin keeps a
+  live call there — ephemeral, client-only, nothing to serialise.
 
-## The relationship to `create-slot`
+## The relationship to `createSlot`
 
-`create-slot` is a façade over the runtime channel only. `createSlot()` calls
-`defineSlot` with a generated name. `Slot` is `Fill`. `Host` and `useProps` are
-the registry's own, and the host's children are the placeholder. The public API
-of `create-slot` does not change. This document describes how the library stores,
-orders and delivers contributions.
+`createSlot()` is the runtime channel, whole and alone: a factory whose slot
+component registers its child while mounted, whose `Host` renders the fills,
+and whose `useProps` reads the host's props from a fill. Each factory owns a
+private store — two factories can never exchange fills, two React roots using
+one factory always do, and no module-level registry exists for a duplicated
+package copy to split.
 
-Choose a channel by what a contribution _is_:
+Choose by what a contribution *is*:
 
-- **`contribute` — data plus a component.** The host can enumerate it during
-  render, so it is in the HTML. The cost: the contributions of one plugin no
-  longer share a React subtree, and therefore no longer share ordinary
-  `useState`. A store takes the place of that state, which is why the examples
-  show redux and mobx.
-- **`Fill` — an element from the position where it is mounted.** A feature stays
-  one subtree, and its contributions share ordinary state. The cost: no SSR.
+- **`contribute` — data plus a component.** The host enumerates it during
+  render, so it is in the HTML, addressable by id, disable-able and
+  override-able. The cost: one plugin's contributions no longer share a React
+  subtree, so a store takes the place of shared `useState`.
+- **a façade fill — an element from the position where it is mounted.** A
+  feature stays one subtree and shares ordinary state. The cost: no SSR, no
+  identity, no isolation — it is the application's own code in the
+  application's own tree.
 
-Use the declarative channel for content that must be in the HTML. Use the runtime
-channel for chrome that depends on live tree state.
+Use the registry for content that must be in the HTML. Use the façade for
+chrome that depends on live tree state — a status bar fed by whichever page is
+mounted.
 
 ## Examples
 
-The examples are one CRM whose features are plugins. The registry's own examples
-are the two Next.js shells over `examples/crm-core`. The SPA uses the other
-channel and contains none of the registry.
+The examples are one CRM whose features are plugins. The registry's own
+examples are the two Next.js shells over `examples/crm-core`; the SPA is the
+façade alone and contains none of the registry.
 
 ```sh
-npm run dev:spa        # http://localhost:5173 — client-rendered
+npm run dev:spa        # http://localhost:5173 — client-rendered, createSlot only
 npm run dev:next-pages # http://localhost:3000 — Next.js pages router, SSR
-npm run dev:next-app   # http://localhost:3001 — Next.js app router, RSC + streaming
+npm run dev:next-app   # http://localhost:3001 — app router: RSC tier 2 + streaming
 ```
 
 Run `npm run dev:next-pages`, then view the source at
-`http://localhost:3000/deals?view=stale`. The markup already contains the
-plugins' nav items, deal actions and panels. The application's resolved table has
-already applied the saved view, and the pipeline card carries the target that its
-`preload` fetched. Two things are absent from that HTML, by design: the status bar
-shows its placeholder, because the runtime channel fills it, and the command list
-is empty, because `setup` runs in an effect. Both appear shortly after hydration.
+`http://localhost:3000/deals?view=stale`: the plugins' nav items, actions and
+panels are in the markup, the saved view is applied, and the pipeline card
+carries its preloaded target. The status bar shows its placeholder (façade
+channel) and the command list is empty (`setup` runs in an effect) — both
+appear after hydration.
 
-`npm run dev:spa` is the same CRM, built from `createSlot` alone. It has no
-manifest and no `PluginProvider`, and it mounts plugins as children of the shell,
-so a switch that disables one is a branch that stops rendering. It also shows the
-cost of the runtime channel: no error boundary wraps a fill, so its crash-test
-plugin must supply one.
-
-`npm run dev:next-app` is the app router version. It produces the same HTML, plus
-a contribution whose data arrives in a later chunk, and the client boundary that
-RSC forces on any plugin registry. See
-[examples/nextjs-app](examples/nextjs-app).
+`npm run dev:next-app` adds the two things only the app router raises: the
+Resolution resolved in a server layout and handed across the boundary whole,
+and a dashboard card whose data streams in after the shell. Its sidebar also
+carries a host with no client half at all — `app/server-nav.tsx`.

@@ -28,10 +28,11 @@ See [empty states](#empty-states) below.
 
 The two channels differ here, and both are one expression:
 
-- **Declarative** — filter the `plugins` array. Whatever decides it must produce
-  the same answer on the server and on the client; see
+- **Registry** — resolve from a filtered list, or keep the list whole and
+  `disable` by id. Whatever decides it must produce the same answer on the
+  server and on the client; see
   [the SSR contract](/server-rendering#the-contract-in-one-sentence).
-- **Runtime** — stop rendering the component that fills. Installing a feature is
+- **Façade** — stop rendering the component that fills. Installing a feature is
   mounting it, so uninstalling is `&&`.
 
 ```tsx twoslash
@@ -55,9 +56,9 @@ requests its chunk.
 // [!include ~/snippets/recipes-guide.tsx:split-facade]
 ```
 
-While the chunk loads, the plugin has registered no fill. The slot has no
-contributions, so the host renders its own children. You get the placeholder you
-already wrote, not a gap.
+While the chunk loads, the plugin has registered no fill. The factory's host has
+no entries, so it renders its own children. You get the placeholder you already
+wrote, not a gap.
 
 The runtime channel never reaches server markup, so SSR needs nothing more here.
 See [what is missing from the
@@ -65,13 +66,14 @@ HTML](/server-rendering#what-is-missing-from-the-html).
 
 ## Splitting a declared contribution
 
-On the declarative channel only the component moves. The manifest stays in the
-initial bundle, and it has to. The application reads it to filter the `plugins`
-array, and to assemble state before it renders. A contribution whose
-component loads in a later chunk is a **deferred contribution**.
+On the registry only the component moves. The manifest stays in the initial
+bundle, and it has to. The application reads it to resolve the graph, and to
+assemble state before it renders. A contribution whose component loads in a
+later chunk is a **deferred contribution**.
 
-Give the contribution its own `Suspense` boundary. The host puts a boundary
-around every contribution, but that boundary uses `fallback={null}`.
+Two ways to fill the wait: set `Pending` on the provider — one skeleton for
+every deferred contribution, with identity props to vary it — or give the
+contribution its own `Suspense` boundary for a skeleton of its own.
 
 ```tsx twoslash
 // [!include ~/snippets/recipes-guide.tsx:prelude]
@@ -101,19 +103,19 @@ server that does not know the answer yet. See [Plugin state](/state).
 
 One deferred contribution is still one entry in the slot. A host renders its
 `children` only while it has no contributions at all, so the placeholder does
-not appear. The host's own boundary renders `null`, and the slot stays empty
-until the chunk arrives.
+not appear. With no `Pending` set, the boundary renders `null` and the slot
+stays empty until the chunk arrives.
 
-Use this form only when the contribution is small enough that nobody sees the
-gap.
+Use this form only when `Pending` is set, or when the contribution is small
+enough that nobody sees the gap.
 
 ### What each render path produces
 
 | Render path | A chunk that is not loaded gives you |
 | --- | --- |
-| `renderToString` | Nothing you can use. It does not support `Suspense`, so React marks the boundary for a client render. Your own fallback becomes placeholder markup, and a contribution with no fallback emits nothing. |
-| `renderToPipeableStream` | The shell carries the skeleton. The body arrives in a later chunk. |
-| A client render | The skeleton, when the contribution has its own `Suspense`. Nothing, when it does not. |
+| `renderToString` | Nothing you can use. It does not support `Suspense`, so React marks the boundary for a client render. The fallback becomes placeholder markup, and a contribution with no fallback emits nothing. |
+| `renderToPipeableStream` | The shell carries the fallback. The body arrives in a later chunk. |
+| A client render | `Pending`, or the contribution's own `Suspense` fallback. Nothing, when neither is set. |
 
 A render that does not stream cannot put a deferred contribution in the HTML at
 all. See [a deferred
@@ -131,9 +133,9 @@ one row and not the next.
 // [!include ~/snippets/recipes-guide.tsx:per-host]
 ```
 
-On the runtime channel the same pattern works through `useProps()`, which
-reflects the host doing the rendering rather than the place the element was
-written. See [Slots, hosts & fills](/slots#many-hosts-one-contribution).
+On the façade the same pattern works through `useProps()`, which reflects the
+host doing the rendering rather than the place the element was written. See
+[Slots, hosts & fills](/slots#many-hosts-one-contribution).
 
 ## Empty states
 
@@ -150,6 +152,9 @@ DOM — so the container really is empty:
 // ---cut---
 // [!include ~/snippets/recipes-guide.tsx:empty]
 ```
+
+For full ownership of the empty state — a count, a call to action — use
+[`renderEntries`](/api#renderentries), which is called with zero entries too.
 
 ## Exclusive claims
 
@@ -170,7 +175,8 @@ refused instead of silently letting the last one win.
 ## Inventory
 
 There is no inventory helper because the manifest *is* data. An inventory is a
-`.map` over an array your application owns.
+`.map` over an array your application owns — and `Resolution.slots` is the same
+data after `disable` and `override`, if the resolved view is the one you want.
 
 ```tsx twoslash
 // [!include ~/snippets/recipes-guide.tsx:prelude]
@@ -188,7 +194,7 @@ directly with the props the host would give it. No provider, no slot, no
 library involved.
 
 To test the wiring instead — that a plugin reaches the right slot, in the right
-place — render the host inside a provider and assert on the output:
+place — resolve, render the host inside a provider, and assert on the output:
 
 ```tsx twoslash
 // [!include ~/snippets/testing-guide.tsx:prelude]
@@ -196,14 +202,20 @@ place — render the host inside a provider and assert on the output:
 // [!include ~/snippets/testing-guide.tsx:testing]
 ```
 
-Two things worth asserting in a real suite, because both are silent when they
-break:
+Two more assertions worth having in a real suite, because both are silent when
+they break:
 
-- **The placeholder.** Render the host with `plugins={[]}` and assert the
+```tsx twoslash
+// [!include ~/snippets/testing-guide.tsx:prelude]
+// [!include ~/snippets/testing-guide.tsx:testing]
+// ---cut---
+// [!include ~/snippets/testing-guide.tsx:diagnostics]
+```
+
+- **The diagnostics.** One line, and it catches duplicate ids, invalid ids and
+  overrides that no longer target anything.
+- **The placeholder.** Render the host over `resolvePlugins([])` and assert the
   children appear — that is the only signal that a slot name still matches.
-- **The inventory.** `describeCatalog` above turns the manifest into data a test
-  can compare against a snapshot, so a release cannot quietly drop a
-  contribution.
 
-A runtime fill needs one extra step: it registers from an effect, so assert
+A façade fill needs one extra step: it registers from an effect, so assert
 after the effect has run rather than synchronously after the first render.

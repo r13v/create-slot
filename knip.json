@@ -1,7 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "paths": {
-    "create-slot": ["./lib/create-slot.tsx"]
+    "create-slot": ["./lib/index.ts"],
+    "create-slot/core": ["./lib/core/index.ts"]
   },
   "ignore": ["docs-site/**"]
 }

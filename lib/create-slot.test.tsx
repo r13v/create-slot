@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createSlot } from "./create-slot"
+import { createSlot } from "./facade/create-slot"
 
 function items(container: HTMLElement = document.body): string[] {
   return Array.from(container.querySelectorAll("li")).map(

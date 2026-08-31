@@ -10,7 +10,7 @@ export const RegistryDemo = Object.assign(
   {
     toMarkdown() {
       return markdownFallback(
-        "The live registry demo runs only in a browser. Enabling a plugin adds its contributions to two hosts at once, one contribution reads its own plugin id, and the crash-test plugin shows what renderFailed and onError do when a contribution throws.",
+        "The live registry demo runs only in a browser. Enabling a plugin resolves a new graph and both hosts pick it up at once, one contribution reads its own identity through useContribution, and the crash-test plugin shows what Failed and onError do when a contribution throws.",
         "docs-site/src/components/registry-demo.client.tsx",
       )
     },

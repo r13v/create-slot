@@ -1,3 +1,5 @@
+import { SlotHost } from "create-slot"
+
 import { describeCatalog } from "./catalog"
 import { isClosed, money, weighted } from "./data"
 import {
@@ -13,9 +15,9 @@ import {
   DealPanels,
   NavItems,
   SettingsSections,
-  StatusBar,
 } from "./slots"
 import { useDeal, useDeals } from "./state"
+import { StatusBar } from "./status-bar"
 import { Button, Card, Link, StageTag } from "./ui"
 
 /**
@@ -48,14 +50,14 @@ export function DashboardPage() {
           </p>
         </Card>
 
-        <DashboardWidgets.Host>
+        <SlotHost slot={DashboardWidgets}>
           <Card title="No widgets" hint="nothing is contributed">
             <p className="muted">
               Every card but the first one is a contribution. Turn a plugin off
               and it leaves with the plugin.
             </p>
           </Card>
-        </DashboardWidgets.Host>
+        </SlotHost>
 
         <Card title="Commands" hint="from setup(), never rendered">
           {commands.length === 0 ? (
@@ -141,9 +143,9 @@ export function DealsPage({ view }: { view?: string }) {
                 <td>
                   {/* One host per row: the same contributions, different props. */}
                   <div className="actions">
-                    <DealActions.Host deal={deal} scope="row">
+                    <SlotHost slot={DealActions} props={{ deal, scope: "row" }}>
                       <span className="muted">no actions</span>
-                    </DealActions.Host>
+                    </SlotHost>
                   </div>
                 </td>
               </tr>
@@ -197,7 +199,7 @@ export function DealPage({ id }: { id: string }) {
 
         {/* The same slot as every list row, in a host with other props. */}
         <div className="actions">
-          <DealActions.Host deal={deal} scope="detail" />
+          <SlotHost slot={DealActions} props={{ deal, scope: "detail" }} />
         </div>
       </header>
 
@@ -217,7 +219,7 @@ export function DealPage({ id }: { id: string }) {
           </Button>
         </Card>
 
-        <DealPanels.Host deal={deal} />
+        <SlotHost slot={DealPanels} props={{ deal }} />
       </div>
     </>
   )
@@ -233,13 +235,13 @@ export function SettingsPage() {
       </StatusBar>
 
       <div className="grid">
-        <SettingsSections.Host>
+        <SlotHost slot={SettingsSections}>
           <Card title="No settings">
             <p className="muted">
               No enabled plugin has anything to configure.
             </p>
           </Card>
-        </SettingsSections.Host>
+        </SlotHost>
 
         <Card title="Installed plugins" hint="the manifest, read as data" wide>
           <table className="table">
@@ -301,7 +303,7 @@ export function CrmNav({ current }: { current: string }) {
         </li>
 
         {/* Plugin links land under the shell's own, ranked by `order`. */}
-        <NavItems.Host current={current} />
+        <SlotHost slot={NavItems} props={{ current }} />
       </ul>
     </nav>
   )

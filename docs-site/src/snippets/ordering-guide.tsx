@@ -2,7 +2,7 @@
 "use client"
 
 // [!region prelude]
-import { definePlugin, defineSlot } from "create-slot"
+import { createSlot, definePlugin, defineSlot } from "create-slot"
 
 const Toolbar = defineSlot("toolbar")
 
@@ -28,12 +28,16 @@ function ImportButton() {
 // inserted later without renumbering anything.
 export const search = definePlugin({
   id: "search",
-  contributes: [Toolbar.contribute({ order: 10, component: SearchBox })],
+  contributes: [
+    Toolbar.contribute("search-box", { order: 10, component: SearchBox }),
+  ],
 })
 
 export const filters = definePlugin({
   id: "filters",
-  contributes: [Toolbar.contribute({ order: 20, component: FilterMenu })],
+  contributes: [
+    Toolbar.contribute("menu", { order: 20, component: FilterMenu }),
+  ],
 })
 // [!endregion priority]
 
@@ -43,20 +47,30 @@ export const filters = definePlugin({
 export const exportCsv = definePlugin({
   id: "export-csv",
   contributes: [
-    Toolbar.contribute({ order: 20, component: ExportButton }),
-    Toolbar.contribute({ order: 20, component: ImportButton }),
+    Toolbar.contribute("export", { order: 20, component: ExportButton }),
+    Toolbar.contribute("import", { order: 20, component: ImportButton }),
   ],
 })
 // [!endregion tie]
 
+// [!region override]
+// The application re-ranks a contribution it does not own by its full id.
+// Typed patches come from the slot: `override` is where a replacement
+// component would be checked against the slot's props.
+export const reranked = Toolbar.override("export-csv/import", { order: 5 })
+// [!endregion override]
+
 // [!region read-once]
+const StatusItems = createSlot()
+
 export function UnstableOrder({ rank }: { rank: number }) {
-  // Read once, when the fill mounts. Changing `rank` afterwards leaves the
-  // fill exactly where it is — pass the value that is already final.
+  // A façade fill reads `order` once, when it mounts. Changing `rank`
+  // afterwards leaves the fill exactly where it is — pass the value that is
+  // already final.
   return (
-    <Toolbar.Fill order={rank}>
+    <StatusItems order={rank}>
       <button type="button">Pinned</button>
-    </Toolbar.Fill>
+    </StatusItems>
   )
 }
 // [!endregion read-once]

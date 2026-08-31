@@ -9,22 +9,32 @@
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/create-slot.d.ts",
-        "default": "./dist/create-slot.js"
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
       "require": {
-        "types": "./dist/create-slot.d.cts",
-        "default": "./dist/create-slot.cjs"
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./core": {
+      "import": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core/index.js"
+      },
+      "require": {
+        "types": "./dist/core/index.d.cts",
+        "default": "./dist/core/index.cjs"
       }
     }
   },
   "files": [
     "dist"
   ],
-  "types": "./dist/create-slot.d.ts",
+  "types": "./dist/index.d.ts",
   "repository": "r13v/create-slot",
   "scripts": {
-    "bundle": "tsup",
+    "bundle": "tsup && node scripts/prepend-use-client.mjs",
     "dev:spa": "npm run bundle && npm run dev --workspace crm-spa",
     "dev:next-pages": "npm run bundle && npm run dev --workspace crm-nextjs-pages",
     "dev:next-app": "npm run bundle && npm run dev --workspace crm-nextjs-app",
@@ -41,7 +51,9 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:run": "vitest run",
-    "bench": "vitest bench --run"
+    "bench": "vitest bench --run",
+    "test:rsc": "node --conditions react-server test/react-server-smoke.mjs",
+    "test:chunks": "node test/chunk-sharing-smoke.cjs"
   },
   "peerDependencies": {
     "react": "*",
@@ -65,20 +77,5 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
-  },
-  "tsup": {
-    "entry": [
-      "lib/create-slot.tsx"
-    ],
-    "sourcemap": true,
-    "clean": true,
-    "dts": true,
-    "format": [
-      "cjs",
-      "esm"
-    ],
-    "external": [
-      "react"
-    ]
   }
 }

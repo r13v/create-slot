@@ -30,7 +30,6 @@ export {
   DealPanels,
   NavItems,
   SettingsSections,
-  StatusBar,
 } from "./slots"
 export {
   type CrmState,
@@ -42,6 +41,7 @@ export {
   useDeals,
   usePluginState,
 } from "./state"
+export { StatusBar } from "./status-bar"
 export { Button, Card, Link, PluginCard, PluginRow, StageTag } from "./ui"
 export {
   CrmNav,

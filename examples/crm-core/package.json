@@ -9,7 +9,9 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./data": "./src/data.ts",
-    "./crm.css": "./src/crm.css"
+    "./crm.css": "./src/crm.css",
+    "./catalog": "./src/catalog.ts",
+    "./slots": "./src/slots.ts"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.12.0",

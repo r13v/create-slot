@@ -5,8 +5,10 @@ import {
   definePlugin,
   defineSlot,
   type PluginDefinition,
-  PluginProvider,
-} from "./create-slot"
+  resolvePlugins,
+  SlotHost,
+  SlotProvider,
+} from "./index"
 
 /**
  * How the registry's cost grows.
@@ -16,8 +18,8 @@ import {
  * before and after a change to the host's render path.
  *
  * What they cannot see is the waste worth caring about — a contribution that
- * re-renders for no reason costs almost nothing here and a great deal in a real
- * application. That is what `perf.test.tsx` measures instead.
+ * re-renders for no reason costs almost nothing here and a great deal in a
+ * real application. That is what `perf.test.tsx` measures instead.
  */
 
 function contribution(name: string) {
@@ -35,7 +37,10 @@ function manifest(slot: string, count: number): PluginDefinition[] {
     definePlugin({
       id: `plugin-${i}`,
       contributes: [
-        target.contribute({ order: i, component: contribution(`c${i}`) }),
+        target.contribute("entry", {
+          order: i,
+          component: contribution(`c${i}`),
+        }),
       ],
     }),
   )
@@ -44,15 +49,15 @@ function manifest(slot: string, count: number): PluginDefinition[] {
 for (const size of [10, 100]) {
   describe(`${size} contributions`, () => {
     const Toolbar = defineSlot<{ zoom: number }>(`bench-mount-${size}`)
-    const plugins = manifest(`bench-mount-${size}`, size)
+    const resolution = resolvePlugins(manifest(`bench-mount-${size}`, size))
 
     bench("mount", () => {
       const { unmount } = render(
-        <PluginProvider plugins={plugins}>
+        <SlotProvider resolution={resolution}>
           <ul>
-            <Toolbar.Host zoom={1} />
+            <SlotHost slot={Toolbar} props={{ zoom: 1 }} />
           </ul>
-        </PluginProvider>,
+        </SlotProvider>,
       )
 
       unmount()
@@ -61,14 +66,14 @@ for (const size of [10, 100]) {
 
   describe(`${size} contributions, host re-rendered`, () => {
     const Toolbar = defineSlot<{ zoom: number }>(`bench-update-${size}`)
-    const plugins = manifest(`bench-update-${size}`, size)
+    const resolution = resolvePlugins(manifest(`bench-update-${size}`, size))
 
     const tree = (zoom: number) => (
-      <PluginProvider plugins={plugins}>
+      <SlotProvider resolution={resolution}>
         <ul>
-          <Toolbar.Host zoom={zoom} />
+          <SlotHost slot={Toolbar} props={{ zoom }} />
         </ul>
-      </PluginProvider>
+      </SlotProvider>
     )
 
     const { rerender } = render(tree(1))

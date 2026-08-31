@@ -2,7 +2,13 @@
 "use client"
 
 // [!region prelude]
-import { definePlugin, defineSlot, PluginProvider } from "create-slot"
+import {
+  definePlugin,
+  defineSlot,
+  resolvePlugins,
+  SlotHost,
+  SlotProvider,
+} from "create-slot"
 import type { ReactNode } from "react"
 
 const Toolbar = defineSlot("toolbar")
@@ -13,28 +19,35 @@ declare function test(name: string, run: () => void): void
 // [!endregion prelude]
 
 // [!region testing]
-// Testing the wiring: render the host inside a provider and assert the output.
+// Testing the wiring: resolve, hand the Resolution to a provider, and assert
+// on the host's output.
 const search = definePlugin({
   id: "search",
   contributes: [
-    Toolbar.contribute({ order: 10, component: () => <li>Search</li> }),
+    Toolbar.contribute("button", {
+      order: 10,
+      component: () => <li>Search</li>,
+    }),
   ],
 })
 
 const filters = definePlugin({
   id: "filters",
   contributes: [
-    Toolbar.contribute({ order: 20, component: () => <li>Filters</li> }),
+    Toolbar.contribute("button", {
+      order: 20,
+      component: () => <li>Filters</li>,
+    }),
   ],
 })
 
 test("plugins render in order", () => {
   const { container } = render(
-    <PluginProvider plugins={[filters, search]}>
+    <SlotProvider resolution={resolvePlugins([filters, search])}>
       <ul>
-        <Toolbar.Host />
+        <SlotHost slot={Toolbar} />
       </ul>
-    </PluginProvider>,
+    </SlotProvider>,
   )
 
   // Ranked by `order`, not by position in the array.
@@ -43,3 +56,12 @@ test("plugins render in order", () => {
   ).toEqual(["Search", "Filters"])
 })
 // [!endregion testing]
+
+// [!region diagnostics]
+// The catalog validator is one line: the resolver reports every manifest
+// defect — duplicate ids, invalid ids, unknown disable and override targets —
+// as data instead of throwing.
+test("the catalog is clean", () => {
+  expect(resolvePlugins([search, filters]).diagnostics).toEqual([])
+})
+// [!endregion diagnostics]

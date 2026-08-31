@@ -1,9 +1,17 @@
 "use client"
 
-import { definePlugin, defineSlot, PluginProvider } from "create-slot"
+import {
+  createSlot,
+  definePlugin,
+  defineSlot,
+  resolvePlugins,
+  SlotHost,
+  SlotProvider,
+} from "create-slot"
 import { useMemo, useState } from "react"
 
 const Toolbar = defineSlot("demo-toolbar")
+const StatusItems = createSlot()
 
 function Button({ label }: { label: string }) {
   return (
@@ -32,8 +40,9 @@ const DECLARED = [
 ] as const
 
 /**
- * Two lessons in one stage: a declared contribution's `order` is read on every
- * render, and a runtime fill's `order` is read once, on mount.
+ * Two lessons in one stage: a declared contribution's `order` is data — a new
+ * Resolution re-ranks it immediately — while a façade fill's `order` is read
+ * once, on mount.
  */
 export function OrderingDemoClient() {
   const [orders, setOrders] = useState<Record<string, number>>({
@@ -45,37 +54,56 @@ export function OrderingDemoClient() {
   const [fillKey, setFillKey] = useState(0)
   const [fillMounted, setFillMounted] = useState(true)
 
-  const plugins = useMemo(
+  const resolution = useMemo(
     () =>
-      DECLARED.map(({ id, component }) =>
-        definePlugin({
-          id,
-          contributes: [
-            Toolbar.contribute({ order: orders[id] ?? 0, component }),
-          ],
-        }),
+      resolvePlugins(
+        DECLARED.map(({ id, component }) =>
+          definePlugin({
+            id,
+            contributes: [
+              Toolbar.contribute("button", {
+                order: orders[id] ?? 0,
+                component,
+              }),
+            ],
+          }),
+        ),
       ),
     [orders],
   )
 
   return (
     <div className="cs-demo">
-      <PluginProvider plugins={plugins}>
+      <SlotProvider resolution={resolution}>
         <div className="cs-demo-stage">
           <div className="cs-panel">
-            <p className="cs-panel-title">Toolbar host</p>
+            <p className="cs-panel-title">Registry host — declared orders</p>
             <div className="cs-row">
-              <Toolbar.Host />
+              <SlotHost slot={Toolbar} />
+            </div>
+          </div>
+
+          <div className="cs-panel">
+            <p className="cs-panel-title">Façade host — one runtime fill</p>
+            <div className="cs-row">
+              <StatusItems.Host>
+                <span className="cs-item-placeholder">No fill mounted</span>
+              </StatusItems.Host>
             </div>
           </div>
         </div>
 
+        {/* A permanent fill so the runtime one has something to rank against. */}
+        <StatusItems order={20}>
+          <span className="cs-chip">Saved</span>
+        </StatusItems>
+
         {fillMounted && (
-          <Toolbar.Fill key={fillKey} order={fillOrder}>
+          <StatusItems key={fillKey} order={fillOrder}>
             <span className="cs-chip cs-chip-runtime">Unsaved (fill)</span>
-          </Toolbar.Fill>
+          </StatusItems>
         )}
-      </PluginProvider>
+      </SlotProvider>
 
       <div className="cs-demo-controls">
         {DECLARED.map(({ id, label }) => (
@@ -123,9 +151,10 @@ export function OrderingDemoClient() {
       </div>
 
       <p className="cs-demo-note">
-        Change a declared order and the toolbar reorders immediately. Change the
-        fill's order and nothing moves — it was read once, on mount. Remount it
-        to apply the new value.
+        Change a declared order and the registry host reorders on the next
+        Resolution — immediately. Change the fill's order and nothing moves —
+        the façade read it once, on mount. Remount the fill to apply the new
+        value.
       </p>
     </div>
   )

@@ -13,16 +13,17 @@ One CRM whose features are plugins, built three times. The SPA is the
 ```bash
 npm run dev:spa        # http://localhost:5173 — client-rendered, createSlot only
 npm run dev:next-pages # http://localhost:3000 — Next.js pages router, SSR
-npm run dev:next-app   # http://localhost:3001 — Next.js app router, RSC + streaming
+npm run dev:next-app   # http://localhost:3001 — app router: RSC tier 2 + streaming
 ```
 
 ## SPA — the runtime channel alone
 
 [`examples/spa`](https://github.com/r13v/create-slot/tree/main/examples/spa)
 
-No manifest, no plugin array and no provider: a plugin is a component that
-contributes, and installing it is mounting it as a child of the shell. Live
-toggles are `&&`. Per-row hosts hand the same fill different props.
+No manifest, no Resolution and no provider: a plugin is a component that
+contributes through the `createSlot()` façade, and installing it is mounting it
+as a child of the shell. Live toggles are `&&`. Per-row hosts hand the same
+fill different props.
 
 It is also where the runtime channel's cost is visible — no error boundary wraps
 a fill, so the crash-test feature has to bring its own.
@@ -31,17 +32,16 @@ a fill, so the crash-test feature has to bring its own.
 
 [`examples/nextjs-pages`](https://github.com/r13v/create-slot/tree/main/examples/nextjs-pages)
 
-The same features declared up front, in the HTML the server sends. Run it and
-view source at `http://localhost:3000/deals?view=stale`:
+The same features declared up front, resolved once per request, in the HTML the
+server sends. Run it and view source at `http://localhost:3000/deals?view=stale`:
 
 - the plugins' nav items, deal actions and panels are already in the markup;
 - the saved view has already been applied by the application's resolved table;
 - the pipeline card carries the target its `preload` fetched.
 
 Two things are missing from that HTML **on purpose**: the status bar shows its
-placeholder, because it is filled through the runtime channel, and the command
-list is empty, because `setup` runs in an effect. Both appear a moment after
-hydration.
+placeholder, because it is a façade fill, and the command list is empty,
+because `setup` runs in an effect. Both appear a moment after hydration.
 
 That page is the difference between the two channels, stated in markup instead
 of prose.
@@ -50,14 +50,13 @@ of prose.
 
 [`examples/nextjs-app`](https://github.com/r13v/create-slot/tree/main/examples/nextjs-app)
 
-The same HTML again, under React Server Components — where the manifest is
-client-side code by construction and the server sends **ids** instead of
-plugins. Five files' worth of integration, plus the thing the pages router
-cannot do: one slow contribution streams in on its own, after the rest of the
-page.
-
-See [Server rendering](/server-rendering#react-server-components) for why the
-client boundary is unavoidable.
+The same HTML again, under React Server Components — tier 2 of
+[the RSC story](/server-rendering#react-server-components). The manifests
+follow the two-module discipline, so a server layout calls `resolvePlugins`
+from `create-slot/core` and hands the whole Resolution across the client
+boundary as a prop. The sidebar carries a host with no client half at all —
+`entriesOf` plus `ContributionBoundary` in `app/server-nav.tsx` — and one slow
+dashboard card streams in on its own, after the rest of the page.
 
 ## Shared core
 

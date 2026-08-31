@@ -5,7 +5,12 @@ import { pipeline } from "./plugins/pipeline"
 import { telephony } from "./plugins/telephony"
 import { CRM_PLUGIN_IDS, type CrmPluginId } from "./server"
 
-/** The manifests, keyed by id. `satisfies` is what keeps the two in step. */
+/**
+ * The manifests, keyed by id. `satisfies` is what keeps the two in step.
+ *
+ * A plain module: manifests follow the two-module discipline, so this file —
+ * and `resolvePlugins` over it — is importable from a server component.
+ */
 const INSTALLED = {
   pipeline,
   forecast,

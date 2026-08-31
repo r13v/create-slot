@@ -1,6 +1,6 @@
 ---
 title: Plugin registry
-description: The declarative channel — defineSlot, definePlugin and PluginProvider — and the manifest a server render can see.
+description: The declarative channel — defineSlot, definePlugin, resolvePlugins and SlotProvider — and the Resolution a server can hand across an RSC boundary.
 showAskAi: false
 ---
 
@@ -8,23 +8,33 @@ import { RegistryDemo } from "../components/registry-demo"
 
 # Plugin registry
 
-The registry is the declarative half of `create-slot`, exported from the same
-entry point. The shift it makes: the source of truth about contributions moves
-out of the React tree and into an index built during render. A contribution
-stops being an element that an effect teleports and becomes **data plus a
-component** — so a host can enumerate its contributions synchronously, which is
-exactly what a server render needs.
-
-Four names, and the manifest the library reads is two fields wide.
+The registry is `create-slot`'s declarative channel — since 4.0, its only one.
+Plugins declare their contributions as data; `resolvePlugins` turns the plugin
+list into a `Resolution` — one pure, synchronous, deterministic function; hosts
+render what it resolved. A contribution is not an element that an effect moves
+at runtime. It is **data plus a component**, under a required id — so the whole
+graph is known before render, which is exactly what a server render needs.
 
 ## The whole surface
 
 ```ts
-defineSlot<Props>(name): SlotDefinition<Props>  // { name, Host, Fill, contribute, useProps }
-definePlugin(definition): Plugin                // { id, contributes? } plus your own fields
-<PluginProvider plugins onError? renderFailed? />
-usePluginId(): string
+// create-slot/core — React-free, importable from server components
+defineSlot<Props>(name): Slot<Props>            // { name, contribute, override }
+definePlugin(definition)                        // { id, contributes? } plus your own fields
+resolvePlugins(plugins, options?): Resolution   // { slots, diagnostics }
+entriesOf(resolution, slot): ResolvedEntry<Props>[]
+
+// create-slot — the React adapter, plus everything above re-exported
+<SlotProvider resolution onError? Failed? Pending? />
+<SlotHost slot props? renderEntries?>placeholder</SlotHost>
+useSlotProps(slot): Props | null
+useContribution(): { slot, pluginId, contributionId }
+<ContributionBoundary pluginId contributionId slot />
 ```
+
+`create-slot/core` never imports React at runtime, so a server component, a
+Node script or a test can import it under any condition. The root entry
+re-exports the core, so a client module needs one import.
 
 ## 1. Name the slots
 
@@ -32,10 +42,14 @@ usePluginId(): string
 // [!include ~/snippets/registry-guide.tsx:slots]
 ```
 
+A slot is a descriptor — a name plus a props type, never a component. Since the
+core is React-free, `slots.ts` is importable from server modules too.
+
 ## 2. Declare the contributions
 
 A plugin is an object with an `id` and a list of contributions. A contribution
-is an ordinary component that receives the host's props.
+is an ordinary component that receives the host's props — declared under a
+**required id**.
 
 ```tsx twoslash
 // [!include ~/snippets/registry-guide.tsx:slots]
@@ -43,15 +57,17 @@ is an ordinary component that receives the host's props.
 // [!include ~/snippets/registry-guide.tsx:plugin]
 ```
 
-`id` must be unique: it becomes part of every contribution's React key, and in
-development the provider reports a duplicate. That is the only thing the library
-checks about a manifest.
+A contribution's id is local to its plugin, never contains `/`, and must be
+unique inside it. The full id `${pluginId}/${contributionId}` is the React key
+every host uses, the address `disable` and `override` target, and the name
+diagnostics use. Because the key is the id, inserting or removing a
+neighbouring contribution never remounts the others.
 
-## 3. Mount the provider
+## 3. Resolve, and mount the provider
 
-The provider takes the plugin array already filtered by the application — by
-flag, by tenant, by permission. It builds and sorts the index during render, and
-nothing is registered from an effect.
+`resolvePlugins` is where everything that used to be render-time work happens:
+grouping, `disable`, `override` patches, sorting, key minting. The application
+owns the Resolution — and the memo boundary with it.
 
 ```tsx twoslash
 // [!include ~/snippets/registry-guide.tsx:slots]
@@ -60,11 +76,44 @@ nothing is registered from an effect.
 // [!include ~/snippets/registry-guide.tsx:provider]
 ```
 
-## 4. Decide which plugins are enabled
+## 4. Configure without forking
 
-The library never filters. `plugins` is whatever array you hand it, so enabling
-and disabling is an application concern — and that is deliberate, because only
-the application knows whether the answer has to survive a hydration.
+`disable` drops a plugin or a single contribution by id. `override` patches
+one contribution's `order` or `component`. Typed overrides come from the slot,
+not from a string: a string id cannot carry `Props`, so `NavMenu.override` is
+where a replacement component is type-checked.
+
+```tsx twoslash
+// [!include ~/snippets/registry-guide.tsx:slots]
+// [!include ~/snippets/registry-guide.tsx:plugin]
+// [!include ~/snippets/registry-guide.tsx:provider]
+// ---cut---
+// [!include ~/snippets/registry-guide.tsx:configure]
+```
+
+Problems come back as **diagnostics** — never thrown, never silently dropped:
+
+```
+duplicate-plugin-id · duplicate-contribution-id · invalid-contribution-id
+unknown-disable-target · unknown-override-target · override-slot-mismatch
+```
+
+In development the provider prints them once per content change; a production
+build pays nothing for the printing, and the data is still on the Resolution
+for a test to assert on:
+
+```ts
+expect(resolvePlugins(PLUGINS).diagnostics).toEqual([])
+```
+
+That one line is the catalog validator. The Resolution is plain data — slot
+name → sorted entries plus the diagnostics — so an inspector, a policy check or
+a snapshot is a `.map` over it, not a library feature.
+
+## 5. Decide which plugins are enabled
+
+The enabled set is application data — only the application knows whether the
+answer has to survive a hydration.
 
 ```tsx twoslash
 // [!include ~/snippets/registry-guide.tsx:slots]
@@ -74,13 +123,9 @@ the application knows whether the answer has to survive a hydration.
 // [!include ~/snippets/registry-guide.tsx:enabled]
 ```
 
-Two rules come with that array, and both are cheap to keep:
-
-- **It must match on the server and the client**, in the same order. See
-  [the SSR contract](/server-rendering#the-contract-in-one-sentence).
-- **It must be stable across renders.** A filter written inline in JSX produces
-  a fresh array every time and re-renders every contribution. See
-  [Performance](/performance#keep-the-plugin-list-stable).
+One rule comes with those inputs, and it is cheap to keep: **give the resolver
+the same inputs, in the same order, on the server and on the client.** See
+[the SSR contract](/server-rendering#the-contract-in-one-sentence).
 
 ## A suggested file layout
 
@@ -92,31 +137,33 @@ src/
   slots.ts            # defineSlot calls — the only module both sides import
   plugins/
     pricing/
-      index.ts        # definePlugin: the manifest
-      nav-item.tsx    # the contribution components
+      index.ts        # definePlugin: the manifest, a plain module
+      nav-item.tsx    # the contribution components ("use client" under RSC)
     reporting/
       ...
   catalog.ts          # the array, in the order the server and client agree on
-  app.tsx             # PluginProvider, and the hosts
+  app.tsx             # resolvePlugins, SlotProvider, and the hosts
 ```
 
 A feature imports `slots.ts` and nothing else from the application. The
 application imports `catalog.ts`. Neither direction crosses between features.
+Under React Server Components this split is also
+[the two-module discipline](/server-rendering#tier-2--the-two-module-discipline).
 
 ## See it work
 
-Enable a plugin and both hosts get its contributions at once. One card reads its
-own plugin id. The crash-test plugin throws on purpose, so the error boundary
-the host places around every contribution is visible rather than described.
+Enable a plugin and both hosts pick up the new Resolution at once. One card
+reads its own identity. The crash-test plugin throws on purpose, so the
+isolation boundary around every contribution is visible rather than described.
 
 <RegistryDemo />
 
-## Per-plugin identity
+## Per-contribution identity
 
-`usePluginId` is in the API because it is the one thing only the library knows
-while a contribution renders: which plugin's entry the host is on. Every
-per-plugin facility an application wants — a store, a prefixed logger, a
-settings namespace, a telemetry tag — hangs off it.
+`useContribution` is in the API because it is the one thing only the library
+knows while a contribution renders: which contribution it is — slot, plugin id,
+contribution id. Every per-plugin facility an application wants — a store, a
+prefixed logger, a settings namespace, a telemetry tag — hangs off it.
 
 ```tsx twoslash
 // [!include ~/snippets/failure-isolation-guide.tsx:prelude]
@@ -126,9 +173,9 @@ settings namespace, a telemetry tag — hangs off it.
 
 ## What you give up
 
-A plugin's contributions no longer share a React subtree, so they no longer
-share ordinary `useState`. Two contributions of one plugin are two separate
-places in the tree that happen to carry the same `pluginId`.
+A plugin's contributions do not share a React subtree, so they do not share
+ordinary `useState`. Two contributions of one plugin are two separate places in
+the tree that happen to carry the same `pluginId`.
 
 That is the real cost of the declarative channel, and it has a
 straightforward answer: a store, keyed per plugin. See
@@ -141,6 +188,10 @@ before render.
 returns `null`. The cost is that a host cannot know how many contributions
 produced *output* — its children render when nothing is *contributed*, which is
 not the same thing. See [empty states](/recipes#empty-states).
+
+**No policies beyond `disable`.** Limits, allowlists and caps over the resolved
+graph are a `.filter` over `Resolution.slots` the application writes with its
+own vocabulary.
 
 **No exclusive slots and no routing.** "Exactly one owner" is a routing problem,
 not a slot problem. Keep the claim in the manifest as an application field and
@@ -157,8 +208,8 @@ else is yours, and the manifest is open data you can
 
 ## Next
 
-- [Server rendering](/server-rendering) — the SSR contract, RSC and streaming
-- [Failure isolation](/failure-isolation) — `onError`, `renderFailed`, `reset`
+- [Server rendering](/server-rendering) — the SSR contract, the two RSC tiers, streaming
+- [Failure isolation](/failure-isolation) — `onError`, `Failed`, `Pending`, `reset`
 - [Plugin state](/state) — stores assembled from the catalog
-- [Performance](/performance) — what a re-render costs, and the two rules
+- [Performance](/performance) — what a re-render costs, and what stays free
 - [Examples](/examples) — one CRM, three shells

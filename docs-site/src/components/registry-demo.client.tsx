@@ -4,9 +4,11 @@ import {
   definePlugin,
   defineSlot,
   type PluginDefinition,
-  type PluginError,
-  PluginProvider,
-  usePluginId,
+  resolvePlugins,
+  type SlotError,
+  SlotHost,
+  SlotProvider,
+  useContribution,
 } from "create-slot"
 import { useCallback, useMemo, useState } from "react"
 
@@ -19,9 +21,10 @@ type Report = { id: number; text: string }
 let nextReportId = 0
 
 /**
- * The registry, end to end: a manifest per feature, one provider, two slots,
- * per-plugin identity through `usePluginId`, and one contribution that throws
- * so the isolation is visible rather than described.
+ * The registry, end to end: a manifest per feature, one Resolution, one
+ * provider, two hosts, per-contribution identity through `useContribution`,
+ * and one contribution that throws so the isolation is visible rather than
+ * described.
  */
 export function RegistryDemoClient() {
   const [enabledIds, setEnabledIds] = useState<readonly string[]>([
@@ -30,21 +33,27 @@ export function RegistryDemoClient() {
   ])
   const [errors, setErrors] = useState<readonly Report[]>([])
 
-  const plugins = useMemo(
-    () => CATALOG.filter((plugin) => enabledIds.includes(plugin.id)),
+  const resolution = useMemo(
+    () =>
+      resolvePlugins(
+        CATALOG.filter((plugin) => enabledIds.includes(plugin.id)),
+      ),
     [enabledIds],
   )
 
-  const onError = useCallback(({ pluginId, slot, error }: PluginError) => {
-    setErrors((current) => [
-      ...current,
-      // A counter, not the array index: the same message can be reported twice.
-      {
-        id: nextReportId++,
-        text: `${pluginId} threw in "${slot}": ${String(error)}`,
-      },
-    ])
-  }, [])
+  const onError = useCallback(
+    ({ pluginId, contributionId, slot, error }: SlotError) => {
+      setErrors((current) => [
+        ...current,
+        // A counter, not the array index: the same message can be reported twice.
+        {
+          id: nextReportId++,
+          text: `${pluginId}/${contributionId} threw in "${slot}": ${String(error)}`,
+        },
+      ])
+    },
+    [],
+  )
 
   return (
     <div className="cs-demo">
@@ -72,40 +81,29 @@ export function RegistryDemoClient() {
         ))}
       </div>
 
-      <PluginProvider
-        plugins={plugins}
-        onError={onError}
-        renderFailed={({ pluginId, reset }) => (
-          <div className="cs-failed" role="alert">
-            <span>{pluginId} could not render.</span>
-            <button type="button" className="cs-button" onClick={reset}>
-              Try again
-            </button>
-          </div>
-        )}
-      >
+      <SlotProvider resolution={resolution} onError={onError} Failed={Failed}>
         <div className="cs-demo-stage cs-demo-stage-split">
           <nav className="cs-panel" aria-label="Deal navigation">
             <p className="cs-panel-title">nav-menu host</p>
             <ul className="cs-list">
-              <NavMenu.Host current="/deals">
+              <SlotHost slot={NavMenu} props={{ current: "/deals" }}>
                 <li className="cs-item cs-item-placeholder">
                   No plugins installed
                 </li>
-              </NavMenu.Host>
+              </SlotHost>
             </ul>
           </nav>
 
           <div className="cs-panel">
             <p className="cs-panel-title">panels host</p>
             <div className="cs-stack">
-              <Panels.Host dealId="ACME-4417">
+              <SlotHost slot={Panels} props={{ dealId: "ACME-4417" }}>
                 <p className="cs-item-placeholder">Nothing to show</p>
-              </Panels.Host>
+              </SlotHost>
             </div>
           </div>
         </div>
-      </PluginProvider>
+      </SlotProvider>
 
       {errors.length > 0 && (
         <div className="cs-log">
@@ -130,6 +128,24 @@ export function RegistryDemoClient() {
   )
 }
 
+/** A component, not a render prop: `Failed` names the failing contribution. */
+function Failed({
+  pluginId,
+  contributionId,
+  reset,
+}: SlotError & { reset: () => void }) {
+  return (
+    <div className="cs-failed" role="alert">
+      <span>
+        {pluginId}/{contributionId} could not render.
+      </span>
+      <button type="button" className="cs-button" onClick={reset}>
+        Try again
+      </button>
+    </div>
+  )
+}
+
 function PipelineNavItem({ current }: { current: string }) {
   return (
     <li className="cs-item">
@@ -139,13 +155,13 @@ function PipelineNavItem({ current }: { current: string }) {
 }
 
 function PipelineCard({ dealId }: { dealId: string }) {
-  const pluginId = usePluginId()
+  const { pluginId, contributionId } = useContribution()
 
   return (
     <article className="cs-card">
       <p className="cs-card-title">Pipeline</p>
       <p className="cs-muted">
-        {dealId} · rendered for plugin “{pluginId}”
+        {dealId} · rendered as “{pluginId}/{contributionId}”
       </p>
     </article>
   )
@@ -173,21 +189,23 @@ const CATALOG: readonly DemoPlugin[] = [
     id: "pipeline",
     title: "Pipeline",
     contributes: [
-      NavMenu.contribute({ order: 10, component: PipelineNavItem }),
-      Panels.contribute({ order: 10, component: PipelineCard }),
+      NavMenu.contribute("nav-item", { order: 10, component: PipelineNavItem }),
+      Panels.contribute("card", { order: 10, component: PipelineCard }),
     ],
   }),
   definePlugin({
     id: "email",
     title: "Email",
     contributes: [
-      NavMenu.contribute({ order: 20, component: EmailNavItem }),
-      Panels.contribute({ order: 20, component: EmailCard }),
+      NavMenu.contribute("nav-item", { order: 20, component: EmailNavItem }),
+      Panels.contribute("card", { order: 20, component: EmailCard }),
     ],
   }),
   definePlugin({
     id: "crash-test",
     title: "Crash test",
-    contributes: [Panels.contribute({ order: 30, component: BrokenCard })],
+    contributes: [
+      Panels.contribute("broken", { order: 30, component: BrokenCard }),
+    ],
   }),
 ]

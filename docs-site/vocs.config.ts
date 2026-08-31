@@ -98,7 +98,7 @@ export default defineConfig({
       collapsed: false,
       items: [
         { text: "FAQs", link: "/faqs" },
-        { text: "Migrating to 3.0", link: "/migrating" },
+        { text: "Migrating to 4.0", link: "/migrating" },
       ],
     },
   ],

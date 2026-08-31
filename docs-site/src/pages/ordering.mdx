@@ -1,6 +1,6 @@
 ---
 title: Ordering
-description: order is a priority, not an array index. Ties are stable, and a fill reads its order once.
+description: order is a priority, not an array index. Ties break by plugin position, overrides can re-rank, and a façade fill reads its order once.
 showAskAi: false
 ---
 
@@ -8,8 +8,10 @@ import { OrderingDemo } from "../components/ordering-demo"
 
 # Ordering
 
-Every contribution carries an `order`. Both channels rank on the same number,
-so a declared contribution and a runtime fill compete directly.
+Every contribution carries an `order`. The resolver sorts each slot's entries
+by it — `order`, then plugin position, then declaration position — and a host
+renders them in that resolved order. The façade ranks its fills on the same
+kind of number, inside its own store.
 
 ## A priority, not an index
 
@@ -29,7 +31,7 @@ ones later without renumbering anything.
 
 | Value | Meaning |
 | --- | --- |
-| omitted | `0` — the default for both `contribute()` and `Fill` |
+| omitted | `0` — the default for `contribute()` and for a façade fill |
 | negative | before everything that left `order` unset |
 | `10`, `20`, `30` | the useful convention: room to insert later |
 
@@ -50,37 +52,51 @@ other.
 The tie-break is deterministic, in this order:
 
 1. **`order`** — lower first.
-2. **Channel** — a declared contribution beats a fill. It is the one the server
-   also rendered, so the position it already occupies in the markup is the one
-   it keeps.
-3. **Registration sequence** — for declared contributions, the plugin's
-   position in the `plugins` array, then the position within that plugin's
-   `contributes`. For fills, the order in which they mounted.
+2. **Plugin position** — where the plugin sits in the list handed to
+   `resolvePlugins`.
+3. **Declaration position** — where the contribution sits in that plugin's
+   `contributes`.
 
 Every part of that is derived from data the application controls, so the same
 inputs always produce the same visual order — on the server and on the client.
+Each resolved entry also carries its final position as `seq`.
 
 ### A worked example
 
-Given `plugins={[search, filters, exportCsv]}` and one fill mounted at
-`order: 20`, the host renders this:
+Given `resolvePlugins([search, filters, exportCsv])`, a host renders this:
 
-| # | Contribution | `order` | Channel | Why it is here |
-| --- | --- | --- | --- | --- |
-| 1 | `SearchBox` | 10 | declared | lowest `order` |
-| 2 | `FilterMenu` | 20 | declared | `filters` is earlier in `plugins` than `exportCsv` |
-| 3 | `ExportButton` | 20 | declared | first in `exportCsv`'s `contributes` |
-| 4 | `ImportButton` | 20 | declared | second in `exportCsv`'s `contributes` |
-| 5 | the fill | 20 | runtime | a declared contribution wins a tie against a fill |
+| # | Contribution | `order` | Why it is here |
+| --- | --- | --- | --- |
+| 1 | `search/search-box` | 10 | lowest `order` |
+| 2 | `filters/menu` | 20 | `filters` is earlier in the list than `exportCsv` |
+| 3 | `export-csv/export` | 20 | first in `exportCsv`'s `contributes` |
+| 4 | `export-csv/import` | 20 | second in `exportCsv`'s `contributes` |
 
-Move `filters` after `exportCsv` in the array and rows 2–4 reorder. Change
+Move `filters` after `exportCsv` in the list and rows 2–4 reorder. Change
 nothing and the result is byte-identical on every render, on both sides of a
 hydration.
 
+## Overrides can re-rank
+
+The integrator has the last word: an `override` patches one contribution's
+`order` by its full id, without forking the plugin that declared it.
+
+```tsx twoslash
+// [!include ~/snippets/ordering-guide.tsx:prelude]
+// [!include ~/snippets/ordering-guide.tsx:tie]
+// ---cut---
+// [!include ~/snippets/ordering-guide.tsx:override]
+```
+
+Pass it to `resolvePlugins` in `options.overrides`. A target that nothing
+carries comes back as an
+[`unknown-override-target` diagnostic](/errors#diagnostics), not a silent
+no-op.
+
 ## Read once
 
-A **fill** reads its `order` once, when it mounts. Changing the value afterwards
-leaves the fill exactly where it is.
+A **façade fill** reads its `order` once, when it mounts. Changing the value
+afterwards leaves the fill exactly where it is.
 
 ```tsx twoslash
 // [!include ~/snippets/ordering-guide.tsx:prelude]
@@ -90,21 +106,22 @@ leaves the fill exactly where it is.
 
 That is deliberate: the alternative is a contribution that jumps position while
 a user is looking at it. Pass the value that is already final, or remount the
-fill to apply a new one.
+fill to apply a new one. Fills that share an `order` render in mount order.
 
-A **declared** contribution has no such caveat. Its `order` lives in the plugin
-array, which the provider re-indexes whenever that array changes.
+A **declared** contribution has no such caveat. Its `order` is data in the
+manifest — resolve again and the new rank applies.
 
 ## See both rules at once
 
-Change a declared order and the toolbar reorders immediately. Change the fill's
-order and nothing moves until you remount it.
+Change a declared order and the registry host reorders on the next Resolution.
+Change the fill's order and nothing moves until you remount it.
 
 <OrderingDemo />
 
-## Before 3.0
+## History
 
-`order` used to be an array index, and two fills that shared one silently
-replaced each other. Order bands, strides and a duplicate-order detector all
-existed to work around that, and 3.0 deletes all of them. See
-[Migrating to 3.0](/migrating#order-changed-meaning).
+In 2.x, `order` was an array index: two fills that shared one silently replaced
+each other, and order bands, strides and duplicate-order detectors existed to
+work around it. 3.0 made `order` a priority on both channels; 4.0 moved the
+declared ranking into `resolvePlugins`, where overrides can re-rank it. See
+[Migrating to 4.0](/migrating).

@@ -1,13 +1,7 @@
 "use client"
 
-import { type PluginError, PluginProvider } from "create-slot"
-import {
-  CRM_PLUGINS,
-  type CrmPlugin,
-  CrmRuntime,
-  createCrmStore,
-  createPluginStores,
-} from "crm-core"
+import { type Resolution, type SlotError, SlotProvider } from "create-slot"
+import { CrmRuntime, createCrmStore, createPluginStores } from "crm-core"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   type ReactNode,
@@ -17,33 +11,38 @@ import {
   useState,
 } from "react"
 
+import { CATALOG, enabledPlugins } from "../lib/catalog"
 import type { Insight } from "../lib/insight"
-import { InsightProvider, insights } from "../plugins/insights"
+import { InsightProvider } from "../plugins/insights.components"
 import { Layout } from "./layout"
 
 /**
  * Everything the pages router put in `_app.tsx`, and one directive more.
  *
- * This is the client boundary. The server decided which plugins this request
- * gets and sent their **ids**; the manifests are imported here, on this side of
- * the boundary, because a React Server Component cannot hold a component or a
- * function in a prop — and could not import the catalog in the first place.
+ * This is the client boundary. The slot graph arrives PRE-RESOLVED from the
+ * server layout — the Resolution is metadata plus client references, so it
+ * crosses the boundary whole. What cannot cross are functions: reducers,
+ * stores and `setup` lifecycles, which is why this shell still assembles the
+ * runtime's plugin list from the ids and the catalog it imports itself.
  */
-
-/** Installed: the shared catalog plus this app's plugin, in `INSTALLED_IDS` order. */
-const CATALOG: readonly CrmPlugin[] = [...CRM_PLUGINS, insights]
 
 export function CrmShell({
   enabled,
+  resolution,
   preloadedState,
   insight,
+  serverNav,
   children,
 }: {
   /** The same list the server rendered with, in the same order. */
   enabled: string[]
+  /** The slot graph the server resolved; hosts below read exactly this. */
+  resolution: Resolution
   preloadedState: Record<string, unknown>
   /** A promise from a server component. Read with `use()` where it is needed. */
   insight: Promise<Insight>
+  /** A server-rendered host, composed on the other side of the boundary. */
+  serverNav: ReactNode
   children: ReactNode
 }) {
   const router = useRouter()
@@ -58,11 +57,12 @@ export function CrmShell({
 
   const enabledKey = enabled.join(",")
 
-  const plugins = useMemo(() => {
-    const ids = new Set(enabledKey ? enabledKey.split(",") : [])
-
-    return CATALOG.filter((plugin) => ids.has(plugin.id))
-  }, [enabledKey])
+  // For the RUNTIME (stores, views, setup) — the slot graph itself arrived
+  // resolved. Same ids, same catalog order, so the two cannot disagree.
+  const plugins = useMemo(
+    () => enabledPlugins(enabledKey.split(",")),
+    [enabledKey],
+  )
 
   // The pages router's `asPath`, in two hooks: the nav marks a saved view as
   // current, and a saved view lives in the query string.
@@ -78,9 +78,12 @@ export function CrmShell({
 
   const notify = useCallback((message: string) => setToast(message), [])
 
-  const onError = useCallback(({ pluginId, slot, error }: PluginError) => {
-    console.error(`[crm] ${pluginId} → ${slot}`, error)
-  }, [])
+  const onError = useCallback(
+    ({ pluginId, contributionId, slot, error }: SlotError) => {
+      console.error(`[crm] ${pluginId}/${contributionId} → ${slot}`, error)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!toast) {
@@ -102,11 +105,16 @@ export function CrmShell({
       notify={notify}
     >
       <InsightProvider insight={insight}>
-        <PluginProvider plugins={plugins} onError={onError}>
-          <Layout current={current} enabled={enabled} toast={toast}>
+        <SlotProvider resolution={resolution} onError={onError}>
+          <Layout
+            current={current}
+            enabled={enabled}
+            toast={toast}
+            serverNav={serverNav}
+          >
             {children}
           </Layout>
-        </PluginProvider>
+        </SlotProvider>
       </InsightProvider>
     </CrmRuntime>
   )

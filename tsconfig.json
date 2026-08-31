@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -11,6 +11,13 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+
+    /* The smoke tests import the package by its own name; resolve those
+       self-reference specifiers to source so typecheck needs no built dist. */
+    "paths": {
+      "create-slot": ["./lib/index.ts"],
+      "create-slot/core": ["./lib/core/index.ts"]
+    },
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",

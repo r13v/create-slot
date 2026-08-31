@@ -1,19 +1,44 @@
 ---
-title: Migrating to 3.0
-description: What changed, what did not, and how to move one feature onto the declarative channel.
+title: Migrating to 4.0
+description: The registry became a resolver — what to rename, what the required contribution id buys, and why the createSlot façade needs no changes.
 showAskAi: false
 ---
 
-# Migrating to 3.0
+# Migrating to 4.0
 
-3.0 rebuilt the library as a plugin registry. `createSlot` is now a façade over
-that registry's runtime channel.
+4.0 rebuilt the registry around one pure function. In 3.x the provider built an
+index from the plugin array during render; in 4.0 the application calls
+`resolvePlugins` itself and hands the **Resolution** to the provider. Hosts
+became one generic component, contributions gained a required id, and the
+runtime channel moved entirely into the `createSlot()` façade — the registry
+never merges fills.
 
-## The published API is unchanged
+## The map
 
-`createSlot`, `Slot`, `Slot.Host`, `Slot.useProps` and the `Slot<Props>` type are
-the names 2.x published, and they still mean what they meant. There is no
-codemod, no deprecation and nothing to rename.
+| 3.x | 4.0 |
+| --- | --- |
+| `<PluginProvider plugins={plugins}>` | `resolvePlugins(plugins)` + `<SlotProvider resolution={resolution}>` |
+| `slot.contribute({ order, component })` | `slot.contribute("id", { order, component })` — the id is **required** |
+| `<Nav.Host current={route}>` | `<SlotHost slot={Nav} props={{ current: route }}>` — an explicit bag, not a spread |
+| `<Nav.Fill order={20}>` | the `createSlot()` façade — a descriptor has no `Fill` |
+| `slot.useProps()` | `useSlotProps(slot)` |
+| `usePluginId()` | `useContribution().pluginId` |
+| `renderFailed={({ reset }) => …}` | `Failed={FailedComponent}` — a component, receiving `{ pluginId, contributionId, slot, error, reset }` |
+| `onError` | unchanged, now also reports `contributionId` |
+| — | `Pending={PendingComponent}` — the fallback while a deferred contribution loads |
+| `type SlotDefinition<Props>` | `type Slot<Props>` — the descriptor: `{ name, contribute, override }` |
+| `type Slot<Props>` (the façade's) | `type RuntimeSlot<Props>` |
+| `type PluginError` | `type SlotError` |
+| positional React keys (`pluginId#index`) | stable full ids (`pluginId/contributionId`) |
+| dev-only duplicate-id warning | six [diagnostics](/errors#diagnostics) on `resolution.diagnostics` |
+| — | `entriesOf`, `override`, `disable`, `ContributionBoundary`, `create-slot/core` |
+
+## The façade is unchanged
+
+`createSlot`, `Slot`, `Slot.Host` and `Slot.useProps` are the names 2.x
+published, and they still mean what they meant — no codemod, no deprecation.
+One **type** moved: `Slot<Props>` now names the descriptor `defineSlot`
+returns, and the façade's return type is `RuntimeSlot<Props>`.
 
 ```tsx twoslash
 // [!include ~/snippets/migrating.tsx:prelude]
@@ -21,76 +46,90 @@ codemod, no deprecation and nothing to rename.
 // [!include ~/snippets/migrating.tsx:unchanged]
 ```
 
-## `order` changed meaning
+## Provider and host
 
-This is the one behavioural change, and it only ever makes previously-broken
-cases work.
+Before, the provider built the index during render:
 
-**Before.** `order` was an array index, so two fills that shared one silently
-replaced each other. Order bands and strides existed to make collisions
-unlikely.
-
-```tsx twoslash
-// [!include ~/snippets/migrating.tsx:prelude]
-// [!include ~/snippets/migrating.tsx:unchanged]
-// ---cut---
-// [!include ~/snippets/migrating.tsx:order-before]
+```tsx
+// 3.x
+<PluginProvider plugins={plugins} onError={report}>
+  <NavMenu.Host current={route} />
+</PluginProvider>
 ```
 
-**Now.** `order` is a real priority. Two fills that share one both render, in
-registration order.
-
-```tsx twoslash
-// [!include ~/snippets/migrating.tsx:prelude]
-// [!include ~/snippets/migrating.tsx:unchanged]
-// ---cut---
-// [!include ~/snippets/migrating.tsx:order-after]
-```
-
-So you can delete:
-
-- **order bands and strides** — a collision is no longer possible
-- **the duplicate-order detector** — same reason
-- **`resetKey`** — needed because a fill used to reach its host one commit late
-- **any per-host `setState` bookkeeping** built around the old store
-
-Read [Ordering](/ordering) for the full tie-break, including how a fill ranks
-against a declared contribution.
-
-## Two vocabularies, on purpose
-
-The registry's own API uses one canonical vocabulary — **slot** for the
-extension point, **host**, **contribution**, **fill**, declarative and runtime
-channels. `createSlot`'s published surface calls its contributor `Slot`.
-
-Both survive because the five names 2.2.1 published were left untouched, while
-the registry had not shipped yet and could be named freely. Two vocabularies in
-one package is the accepted price of not breaking existing imports.
-
-`createSlot` carries no `@deprecated` marker, and that is deliberate too: it is
-the right choice whenever a contribution genuinely is not known up front.
-
-## Moving a feature onto the declarative channel
-
-Worth doing when the contribution has to be in server HTML. The slot gains a
-name, the fill becomes a contribution, and the application gains a provider.
+Now the application resolves, and the provider distributes:
 
 ```tsx twoslash
 // [!include ~/snippets/migrating.tsx:prelude]
 // ---cut---
-// [!include ~/snippets/migrating.tsx:to-registry]
+// [!include ~/snippets/migrating.tsx:after]
 ```
 
-Three things to plan for:
+Two things this buys:
 
-1. **The plugin array must match on the server and the client.** See
-   [the SSR contract](/server-rendering#the-contract-in-one-sentence).
-2. **Contributions of one plugin no longer share a React subtree**, so they no
-   longer share ordinary `useState`. A store takes its place — see
-   [Plugin state](/state).
-3. **A contribution receives the host's props as its own** instead of reading
-   them through `useProps`.
+- **The Resolution is inspectable data** — slot name → sorted entries plus
+  diagnostics — so a validator is
+  `expect(resolvePlugins(PLUGINS).diagnostics).toEqual([])` and an inventory is
+  a `.map`.
+- **It is React-free.** `resolvePlugins` comes from `create-slot/core`, so a
+  server component can resolve and
+  [send the whole graph across the RSC boundary](/server-rendering#tier-2--the-two-module-discipline).
 
-You do not have to move everything. Both channels feed the same host and rank on
-the same `order`, so a mixed application is a supported shape, not a
-transitional state. See [Two channels](/channels#mixing-them).
+## Contribution ids are required
+
+```tsx
+// 3.x — keyed by position
+NavMenu.contribute({ order: 10, component: PricingItem })
+
+// 4.0 — keyed by id
+NavMenu.contribute("nav-item", { order: 10, component: PricingItem })
+```
+
+The full id `pluginId/contributionId` is the React key, the `disable` and
+`override` address, and the name diagnostics use. Because the key is the id,
+inserting or removing a neighbouring contribution never remounts the others —
+**the 3.x rule about fixed-shape `contributes` arrays is gone**, along with the
+advice to hide conditional UI inside a component for the key's sake.
+
+## `renderFailed` becomes `Failed`
+
+A component, not a render prop: its identity is stable, and a component
+reference crosses an RSC boundary where a closure cannot.
+
+```tsx twoslash
+// [!include ~/snippets/migrating.tsx:prelude]
+// [!include ~/snippets/migrating.tsx:after]
+// ---cut---
+// [!include ~/snippets/migrating.tsx:failed]
+```
+
+There is still no automatic reset — recovery is the `reset` your component is
+given. `Pending`, new in 4.0, fills the same `Suspense` boundary while a
+[deferred contribution](/server-rendering#a-deferred-contribution) loads.
+
+## `usePluginId` becomes `useContribution`
+
+```tsx twoslash
+// [!include ~/snippets/migrating.tsx:prelude]
+// [!include ~/snippets/migrating.tsx:after]
+// ---cut---
+// [!include ~/snippets/migrating.tsx:identity]
+```
+
+## Fills on a defined slot
+
+A 3.x `defineSlot` host merged declared contributions with runtime fills. That
+host no longer exists: a `SlotHost` renders declared contributions only, so a
+late client fill can never displace markup the server already shipped.
+
+A fill that was genuinely runtime — a status entry that exists only while a
+dialog is open — moves to a `createSlot()` façade slot with its own host. A
+fill that existed to inject known-up-front content becomes a declared
+contribution. See [Two channels](/channels) for the decision written out.
+
+## Migrating from 2.x
+
+The façade path is unchanged since 3.0: `order` is a priority, not an array
+index — two fills that share one both render, in mount order — so order bands,
+strides, duplicate-order detectors and `resetKey` bookkeeping all stay
+deletable. See [Ordering](/ordering#read-once) for the read-once rule.

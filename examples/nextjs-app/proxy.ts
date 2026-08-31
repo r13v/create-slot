@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-import { PLUGINS_HEADER } from "./lib/crm-request"
+import { PATHNAME_HEADER, PLUGINS_HEADER } from "./lib/crm-request"
 
 /**
  * Why an app-router integration needs ten lines the pages router did not.
@@ -24,6 +24,14 @@ export function proxy(request: NextRequest) {
   } else {
     headers.set(PLUGINS_HEADER, requested)
   }
+
+  // The current route, for the server-rendered host: a layout has no
+  // `usePathname`, so the pathname rides the request the same way the
+  // enabled set does.
+  headers.set(
+    PATHNAME_HEADER,
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  )
 
   return NextResponse.next({ request: { headers } })
 }

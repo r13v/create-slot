@@ -1,38 +1,38 @@
 ---
 title: Performance
-description: What a re-render costs, what the host does about it, and the two things it asks of your application.
+description: What a re-render costs, what the host compares, and why an inline resolvePlugins re-renders shells and nothing else.
 showAskAi: false
 ---
 
 # Performance
 
 A host re-renders whenever anything above it does, and it hands every
-contribution the same props it was given. Left alone, that makes one feature's
+contribution the props it was given. Left alone, that makes one feature's
 state change everyone else's render: a toolbar with a hundred contributions
 would render all hundred because a search box beside it took a keystroke.
 
-So the host compares. It holds its own props steady for as long as their values
-are, and it renders each contribution through a memoised view of the component
-its author wrote. **A host whose props did not really change re-renders
-nothing.**
+So the host compares, twice. It holds its own props steady for as long as their
+values are, and it compares each resolved entry **by content** — id, rank,
+component identity — because `resolvePlugins` mints fresh entry objects on
+every call and an application is allowed to call it inline on every render.
+**A host whose props and entries did not really change re-renders nothing.**
 
-That is held as a budget in the library's own render-count tests, and measured
-with `npm run bench` — worth about 5× on a slot with a hundred contributions.
+That is held as budgets in the library's own render-count tests
+(`lib/perf.test.tsx`):
 
-It asks two things of your application in return:
+- an inline `resolvePlugins()` per render re-renders hosts and boundary
+  shells, and no contribution renders, remounts or commits anything;
+- inline `onError`/`Failed`/`Pending` on the provider re-render nothing below
+  the thin boundary shells.
 
-1. **Keep the `plugins` array stable.** A new array identity rebuilds the index.
-2. **Pass host props by value where you can.** An object rebuilt each render
-   counts as a change.
+Neither rule below is required for correctness — a broken one costs render
+time, never a wrong result.
 
-Both are below, and neither is required for correctness — a broken rule costs
-render time, never a wrong result.
+## Hold the Resolution anyway
 
-## Keep the plugin list stable
-
-The index is grouped and ranked once per array *identity*. A filter written
-inline produces a fresh array on every render of the provider, which rebuilds
-the index and re-renders every contribution.
+The Resolution is identity-compared by the provider, and entries are
+content-compared by each entry shell — so resolving inline is legal and cheap.
+Holding it is one line, and it spares the hosts and shells too.
 
 ```tsx twoslash
 // [!include ~/snippets/performance-guide.tsx:prelude]
@@ -40,7 +40,7 @@ the index and re-renders every contribution.
 // [!include ~/snippets/performance-guide.tsx:unstable]
 ```
 
-Hold the list in a `useMemo`, or in a module:
+The one-line version:
 
 ```tsx twoslash
 // [!include ~/snippets/performance-guide.tsx:prelude]
@@ -48,9 +48,9 @@ Hold the list in a `useMemo`, or in a module:
 // [!include ~/snippets/performance-guide.tsx:stable]
 ```
 
-`onError` and `renderFailed` are exempt. They live in a context of their own,
-read only where a contribution is isolated, so writing them inline — which is
-how everyone writes them — never reaches a host.
+`onError`, `Failed` and `Pending` are exempt. They live in a context of their
+own, read only where a contribution is isolated, so writing an inline handler —
+which is how everyone writes them — never reaches a host.
 
 ## Pass host props by value where you can
 
@@ -73,40 +73,38 @@ This makes an unchanged host free; it never makes a changed one wrong.
 // [!include ~/snippets/performance-guide.tsx:contribution]
 ```
 
-`contribute()` hands back the component you passed, untouched. The memoised view
-belongs to the host and is cached on your component. With a fixed-shape
-`contributes` array, rebuilding the index keeps both the component and its
-positional key, so it does not remount.
+`contribute()` hands back the component you passed, untouched. The memoised
+view belongs to the host and is cached on your component, so a rebuilt
+Resolution never remounts it.
 
-Keep each plugin's declaration order and length fixed. Inserting or removing an
-earlier entry shifts every later key. Put conditional visibility inside the
-component, or make independently enabled UI a plugin of its own.
+The React key is the full id `pluginId/contributionId` — stable data, not a
+position. Inserting or removing a neighbouring contribution never remounts the
+others, so the v3 rule about fixed-shape `contributes` arrays is gone.
 
-## Runtime fills
+## Façade fills
 
-A fill's element is cloned once with a stable key and held in the store, so a
-fill whose *content* changes reconciles against the old element rather than
-remounting.
+A fill's element is cloned once with a stable key and held in the factory's
+store, so a fill whose *content* changes reconciles against the old element
+rather than remounting.
 
-Hosts read the store with `useSyncExternalStore` and get a snapshot that is
-cached per slot and rebuilt only when that slot changes. A slot with no fills
-returns one shared empty array, so a host that no fill ever touches never
-re-renders because of the runtime channel — and a fill added to one slot does
-not disturb the hosts of any other.
+Façade hosts read the store with `useSyncExternalStore` and get a cached
+snapshot, rebuilt only when a fill mounts or unmounts. A factory with no fills
+returns one shared empty array, so an idle façade host never re-renders because
+of the runtime channel.
 
-Runtime fills are not memoised the way declared contributions are: the host
-renders the element it was handed, and that element's identity is the one the
-fill committed. Whatever wraps it inside your own tree decides the rest.
+Fills are not memoised the way declared contributions are: the host renders the
+element it was handed, and that element's identity is the one the fill
+committed. Whatever wraps it inside your own tree decides the rest.
 
 ## What each channel costs
 
-| | Declarative | Runtime |
+| | Registry | Façade |
 | --- | --- | --- |
-| Work per plugin-list change | group and sort the whole index once | — |
-| Work per host render, props unchanged | none — every contribution is memoised | none — the snapshot is cached |
+| Work per plugin-list change | one `resolvePlugins` call: group, patch, sort | — |
+| Work per host render, props unchanged | none — entries content-compared, contributions memoised | none — the snapshot is cached |
 | Work per host render, props changed | one render per contribution | one render per fill |
-| Work per fill mount or unmount | — | re-sort that slot, re-render its hosts |
-| What your application must hold stable | the `plugins` array | nothing |
+| Work per fill mount or unmount | — | re-sort that factory's store, re-render its hosts |
+| What your application must hold stable | nothing — holding the Resolution is an optimisation | nothing |
 
 ## Measuring it yourself
 

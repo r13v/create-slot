@@ -13,11 +13,14 @@ export function Layout({
   current,
   enabled,
   toast,
+  serverNav,
   children,
 }: {
   current: string
   enabled: readonly string[]
   toast: string | null
+  /** Rendered by the SERVER (see app/server-nav.tsx), slotted in here. */
+  serverNav?: ReactNode
   children: ReactNode
 }) {
   const catalog = useCatalog()
@@ -35,6 +38,15 @@ export function Layout({
           {/* Plugin nav items are in the HTML the server sent. */}
           <CrmNav current={current} />
         </div>
+
+        {serverNav && (
+          <div>
+            <p className="side__title">Server-rendered host</p>
+            {/* The same NavItems slot, mapped by a server component with
+                entriesOf + ContributionBoundary — no client host at all. */}
+            {serverNav}
+          </div>
+        )}
 
         <div>
           <p className="side__title">Enabled by the server</p>

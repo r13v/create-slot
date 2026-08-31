@@ -1,7 +1,7 @@
 # CRM — single-page app
 
 A client-rendered CRM whose features are plugins, built out of `createSlot`
-alone: no manifest, no plugin array, no `PluginProvider`. A plugin is a
+alone: no manifest, no resolver, no `SlotProvider`. A plugin is a
 component that contributes, and installing it is mounting it.
 
 ```tsx
@@ -69,5 +69,5 @@ is in the HTML, and the [app router one](../nextjs-app), where it streams.
 **Isolate a contribution for you.** Nothing wraps a fill: it is the app's own
 element in the app's own tree, so a crash takes the host with it unless someone
 puts a boundary in. [src/plugins/faulty.tsx](src/plugins/faulty.tsx) puts one
-around the contribution it knows can throw; `PluginProvider` does it per
-contribution, for every plugin, without being asked.
+around the contribution it knows can throw; the registry's `SlotHost` does it
+per contribution, for every plugin, without being asked.

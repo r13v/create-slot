@@ -2,7 +2,11 @@
 "use client"
 
 // [!region prelude]
-import { definePlugin, type PluginDefinition, usePluginId } from "create-slot"
+import {
+  definePlugin,
+  type PluginDefinition,
+  useContribution,
+} from "create-slot"
 import { startTransition, useEffect } from "react"
 
 type Reducer = (state: unknown, action: { type: string }) => unknown
@@ -58,8 +62,8 @@ export function buildStore(catalog: readonly CrmPlugin[], preloaded: object) {
 
 // [!region mobx]
 // One store instance per application instance — on the server, per request.
-// A contribution finds its own through `usePluginId`, the only thing the
-// library owes it.
+// A contribution finds its own through `useContribution().pluginId`, the
+// identity only the library knows while it renders.
 export const telephony = definePlugin({
   id: "telephony",
   title: "Telephony",
@@ -67,7 +71,9 @@ export const telephony = definePlugin({
 }) satisfies CrmPlugin
 
 export function CallIndicator() {
-  const store = useCrmStore<{ activeCall: string | null }>(usePluginId())
+  const store = useCrmStore<{ activeCall: string | null }>(
+    useContribution().pluginId,
+  )
 
   return <span>{store.activeCall ?? "Idle"}</span>
 }

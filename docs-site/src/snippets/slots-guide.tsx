@@ -2,14 +2,17 @@
 "use client"
 
 // [!region define]
-import { defineSlot } from "create-slot"
+import { defineSlot } from "create-slot/core"
 
 export const DealActions = defineSlot<{ dealId: string; stage: string }>(
   "deal-actions",
 )
+
 // [!endregion define]
 
 // [!region host]
+import { SlotHost } from "create-slot"
+
 export function DealToolbar({
   dealId,
   stage,
@@ -19,10 +22,10 @@ export function DealToolbar({
 }) {
   return (
     <div role="toolbar">
-      <DealActions.Host dealId={dealId} stage={stage}>
+      <SlotHost slot={DealActions} props={{ dealId, stage }}>
         {/* The placeholder. It renders only while nothing is contributed. */}
         <span>No actions available</span>
-      </DealActions.Host>
+      </SlotHost>
     </div>
   )
 }
@@ -43,27 +46,30 @@ export function ArchiveAction({
 
   return <button type="button">Archive {dealId}</button>
 }
+
 // [!endregion contribution]
 
 // [!region fill]
+// The runtime channel lives in the createSlot() façade: the factory's slot
+// component registers its child while mounted, and the child reads the host's
+// props through `useProps` — the element is written here but rendered where
+// the host is.
+import { createSlot } from "create-slot"
+
+const LiveActions = createSlot<{ dealId: string }>()
+
 export function LiveCallAction() {
   return (
-    <DealActions.Fill order={20}>
+    <LiveActions order={20}>
       <CallButton />
-    </DealActions.Fill>
+    </LiveActions>
   )
 }
 
 function CallButton() {
-  // A fill reads the host's props through `useProps`, because the element is
-  // written here but rendered where the host is. `null` means no host above.
-  const props = DealActions.useProps()
+  const { dealId } = LiveActions.useProps()
 
-  if (!props) {
-    return null
-  }
-
-  return <button type="button">Call about {props.dealId}</button>
+  return <button type="button">Call about {dealId}</button>
 }
 // [!endregion fill]
 
@@ -82,7 +88,10 @@ export function DealTable({
             <td>
               {/* One slot, one host per row: the same contribution renders in
                   every mounted host, each time with that host's own props. */}
-              <DealActions.Host dealId={deal.id} stage={deal.stage} />
+              <SlotHost
+                slot={DealActions}
+                props={{ dealId: deal.id, stage: deal.stage }}
+              />
             </td>
           </tr>
         ))}
@@ -93,6 +102,9 @@ export function DealTable({
 // [!endregion multiple-hosts]
 
 // [!region contribute-data]
-// `contribute` produces plain data — which is what a server render enumerates.
-export const archive = DealActions.contribute({ component: ArchiveAction })
+// `contribute` produces plain data under a required id — which is what a
+// server render enumerates, and what `disable` and `override` address.
+export const archive = DealActions.contribute("archive", {
+  component: ArchiveAction,
+})
 // [!endregion contribute-data]
