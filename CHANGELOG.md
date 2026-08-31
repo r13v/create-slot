@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.0.0](https://github.com/r13v/create-slot/compare/v3.1.0...v4.0.0) (2026-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* improve API
+
+### Features
+
+* improve API ([f97ffb7](https://github.com/r13v/create-slot/commit/f97ffb7541a6c36e15eedec631d148541093a607))
+
 ## [3.1.0](https://github.com/r13v/create-slot/compare/v3.0.0...v3.1.0) (2026-08-24)
 
 
