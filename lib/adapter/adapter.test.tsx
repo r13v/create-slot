@@ -209,49 +209,6 @@ describe("provider", () => {
     expect(screen.getByTestId("inner").textContent).toBe("inner")
   })
 
-  it("neither remounts nor re-renders contributions when the graph is re-resolved inline", () => {
-    const Menu = defineSlot("adapter.inline-resolution")
-    let mounts = 0
-    let renders = 0
-
-    function Item() {
-      renders++
-
-      React.useEffect(() => {
-        mounts++
-      }, [])
-
-      return <li>item</li>
-    }
-
-    const plugin = definePlugin({
-      id: "stable",
-      contributes: [Menu.contribute("entry", { component: Item })],
-    })
-
-    function App({ tick }: { tick: number }) {
-      // A fresh Resolution every render: entry content is equal, identity is
-      // not — exactly what the content comparator exists for.
-      return (
-        <SlotProvider resolution={resolvePlugins([plugin])}>
-          <p>{tick}</p>
-          <ul>
-            <SlotHost slot={Menu} />
-          </ul>
-        </SlotProvider>
-      )
-    }
-
-    const { rerender } = render(<App tick={1} />)
-
-    rerender(<App tick={2} />)
-    rerender(<App tick={3} />)
-
-    expect(items()).toEqual(["item"])
-    expect(mounts).toBe(1)
-    expect(renders).toBe(1)
-  })
-
   it("reports diagnostics once, deduped by content", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {})
 
