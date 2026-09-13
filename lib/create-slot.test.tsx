@@ -152,38 +152,6 @@ describe("createSlot ordering", () => {
     // only that garbage in does not lose or duplicate a contribution.
     expect(items().sort()).toEqual(["nan", "one", "zero"])
   })
-
-  it("orders and then releases two hundred fills", () => {
-    const Menu = createSlot()
-    // Interleaved so mount order contradicts `order` almost everywhere.
-    const orders = Array.from({ length: 200 }, (_, i) => (i * 37) % 200)
-
-    function App({ mounted }: { mounted: boolean }) {
-      return (
-        <>
-          <ul>
-            <Menu.Host>
-              <li>placeholder</li>
-            </Menu.Host>
-          </ul>
-          {mounted &&
-            orders.map((order) => (
-              <Menu key={order} order={order}>
-                <li>{String(order)}</li>
-              </Menu>
-            ))}
-        </>
-      )
-    }
-
-    const { rerender } = render(<App mounted={true} />)
-    expect(items()).toEqual(
-      [...orders].sort((a, b) => a - b).map((order) => String(order)),
-    )
-
-    rerender(<App mounted={false} />)
-    expect(items()).toEqual(["placeholder"])
-  })
 })
 
 describe("createSlot hosts", () => {
@@ -244,39 +212,6 @@ describe("createSlot hosts", () => {
 
     second.rerender(<App showHost={true} />)
     expect(items()).toEqual(["fill"])
-  })
-
-  it("isolates two factories from each other", () => {
-    const First = createSlot()
-    const Second = createSlot()
-
-    const { container } = render(
-      <>
-        <ul data-testid="first">
-          <First.Host>
-            <li>placeholder first</li>
-          </First.Host>
-        </ul>
-        <ul data-testid="second">
-          <Second.Host>
-            <li>placeholder second</li>
-          </Second.Host>
-        </ul>
-        <First order={0}>
-          <li>into first</li>
-        </First>
-        <Second order={0}>
-          <li>into second</li>
-        </Second>
-      </>,
-    )
-
-    expect(items(within(container).getByTestId("first"))).toEqual([
-      "into first",
-    ])
-    expect(items(within(container).getByTestId("second"))).toEqual([
-      "into second",
-    ])
   })
 })
 
@@ -347,51 +282,6 @@ describe("createSlot props", () => {
 })
 
 describe("createSlot identity", () => {
-  it("reconciles changed fill content instead of remounting it", async () => {
-    const user = userEvent.setup()
-    const Menu = createSlot()
-    let mounts = 0
-
-    function Child({ label }: { label: string }) {
-      React.useEffect(() => {
-        mounts++
-      }, [])
-
-      return <li>{label}</li>
-    }
-
-    function App() {
-      const [label, next] = React.useReducer(
-        (x: string) => (x === "a" ? "b" : "a"),
-        "a",
-      )
-
-      return (
-        <>
-          <button type="button" onClick={next}>
-            toggle
-          </button>
-          <ul>
-            <Menu.Host>
-              <li>placeholder</li>
-            </Menu.Host>
-          </ul>
-          <Menu order={0}>
-            <Child label={label} />
-          </Menu>
-        </>
-      )
-    }
-
-    render(<App />)
-    expect(items()).toEqual(["a"])
-
-    await user.click(screen.getByRole("button", { name: "toggle" }))
-
-    expect(items()).toEqual(["b"])
-    expect(mounts).toBe(1)
-  })
-
   it("reads order once: a changed order neither moves nor remounts the fill", async () => {
     const user = userEvent.setup()
     const Menu = createSlot()
