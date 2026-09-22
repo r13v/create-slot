@@ -73,7 +73,8 @@ describe("host rendering", () => {
     ])
   })
 
-  it("renders the placeholder only while nothing is contributed", () => {
+  it("renders the placeholder quietly only while nothing is contributed", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
     const Empty = defineSlot("adapter.placeholder")
     const Filled = defineSlot("adapter.placeholder-filled")
 
@@ -101,6 +102,7 @@ describe("host rendering", () => {
 
     expect(screen.getByTestId("empty").textContent).toBe("placeholder")
     expect(screen.getByTestId("filled").textContent).toBe("entry")
+    expect(errors).not.toHaveBeenCalled()
   })
 
   it("renders nothing for an empty slot without a placeholder", () => {
@@ -115,28 +117,6 @@ describe("host rendering", () => {
     )
 
     expect(document.querySelector("ul")?.innerHTML).toBe("")
-  })
-
-  it("serves several hosts of one slot at once", () => {
-    const Menu = defineSlot("adapter.two-hosts")
-
-    const plugin = definePlugin({
-      id: "p",
-      contributes: [Menu.contribute("entry", { component: () => <li>x</li> })],
-    })
-
-    render(
-      <SlotProvider resolution={resolvePlugins([plugin])}>
-        <ul>
-          <SlotHost slot={Menu} />
-        </ul>
-        <ul>
-          <SlotHost slot={Menu} />
-        </ul>
-      </SlotProvider>,
-    )
-
-    expect(items()).toEqual(["x", "x"])
   })
 
   it("throws when a host renders outside the provider", () => {
@@ -475,7 +455,7 @@ describe("pending", () => {
 })
 
 describe("hooks", () => {
-  it("hands the host's props to contributions, typed by the slot", () => {
+  it("hands each host's own props to contributions, typed by the slot", () => {
     type Props = { current: string }
     const Menu = defineSlot<Props>("adapter.props")
 
@@ -499,10 +479,13 @@ describe("hooks", () => {
         <ul>
           <SlotHost slot={Menu} props={{ current: "/pricing" }} />
         </ul>
+        <ul>
+          <SlotHost slot={Menu} props={{ current: "/reports" }} />
+        </ul>
       </SlotProvider>,
     )
 
-    expect(items()).toEqual(["/pricing / /pricing"])
+    expect(items()).toEqual(["/pricing / /pricing", "/reports / /reports"])
   })
 
   it("returns null from useSlotProps outside any host", () => {
@@ -1065,9 +1048,13 @@ describe("ported registry coverage", () => {
 
     expect(renders).toBe(1)
 
-    rerender(<App value={-0} />)
+    rerender(<App value={0} />)
 
     expect(renders).toBe(2)
+
+    rerender(<App value={-0} />)
+
+    expect(renders).toBe(3)
   })
 
   it("never forwards the host's children to a contribution", () => {
@@ -1134,28 +1121,6 @@ describe("ported registry coverage", () => {
 })
 
 describe("dev diagnostics ergonomics", () => {
-  it("treats a slot nobody contributed to as legal and quiet", () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
-    const Quiet = defineSlot("adapter.quiet-empty")
-
-    render(
-      <SlotProvider resolution={resolvePlugins([])}>
-        <ul>
-          <SlotHost slot={Quiet}>
-            <li>placeholder</li>
-          </SlotHost>
-        </ul>
-      </SlotProvider>,
-    )
-
-    expect(items()).toEqual(["placeholder"])
-    expect(
-      errors.mock.calls.some((call) =>
-        String(call[0]).includes("[create-slot]"),
-      ),
-    ).toBe(false)
-  })
-
   it("skips diagnostic logging when NODE_ENV is production", async () => {
     vi.stubEnv("NODE_ENV", "production")
     vi.resetModules()

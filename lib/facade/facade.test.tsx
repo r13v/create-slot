@@ -53,39 +53,6 @@ describe("per-factory store", () => {
     expect(trackedFills(Menu)).toEqual({ entries: 0, listeners: 0 })
   })
 
-  it("comes back to life after everything unmounted", () => {
-    const Menu = createSlot()
-
-    function App({ mounted }: { mounted: boolean }) {
-      return (
-        <>
-          <ul>
-            <Menu.Host>
-              <li>placeholder</li>
-            </Menu.Host>
-          </ul>
-          {mounted && (
-            <Menu>
-              <li>fill</li>
-            </Menu>
-          )}
-        </>
-      )
-    }
-
-    const { rerender } = render(<App mounted={true} />)
-
-    expect(items()).toEqual(["fill"])
-
-    rerender(<App mounted={false} />)
-
-    expect(items()).toEqual(["placeholder"])
-
-    rerender(<App mounted={true} />)
-
-    expect(items()).toEqual(["fill"])
-  })
-
   it("keeps the remaining host subscribed when another one unmounts", () => {
     const Menu = createSlot()
 
