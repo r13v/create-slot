@@ -92,43 +92,6 @@ function pendingValue() {
 }
 
 describe("registry streaming", () => {
-  it("flushes the shell before a suspended contribution resolves", async () => {
-    const { Late, release } = pendingValue()
-
-    // A contribution can bring its own fallback; the nearest boundary wins.
-    function SlowContribution() {
-      return (
-        <Suspense fallback={<li>loading</li>}>
-          <Late />
-        </Suspense>
-      )
-    }
-
-    const slow = definePlugin({
-      id: "slow",
-      contributes: [
-        NavMenu.contribute("entry", { order: 0, component: SlowContribution }),
-      ],
-    })
-
-    const { shell, full } = await stream(
-      <SlotProvider resolution={resolvePlugins([slow, sibling])}>
-        <ul>
-          <SlotHost slot={NavMenu} />
-        </ul>
-      </SlotProvider>,
-      () => release(),
-    )
-
-    // The slow plugin holds up its own line and nothing else.
-    expect(shell).toContain("loading")
-    expect(shell).toContain("sibling")
-    expect(shell).not.toContain("arrived")
-
-    // React streams the resolved content in and swaps the fallback out.
-    expect(full).toContain("arrived")
-  })
-
   it("fixes the order in the shell before any suspended contribution resolves", async () => {
     const release: Record<string, () => void> = {}
     const resolved = new Set<string>()
@@ -191,6 +154,9 @@ describe("registry streaming", () => {
 
     // Every rank already has its place in the shell, so which contribution
     // finishes first cannot decide where its content lands.
+    expect(shell).toContain("loading first")
+    expect(shell).not.toContain("late first")
+    expect(shell).not.toContain("late last")
     expect(shell.indexOf("loading first")).toBeLessThan(
       shell.indexOf("sibling"),
     )

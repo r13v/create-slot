@@ -78,7 +78,7 @@ describe("resolvePlugins", () => {
     ).not.toThrow()
   })
 
-  it("sorts by order, then plugin position, then declaration position", () => {
+  it("sorts by order, plugin and declaration position, then stamps seq", () => {
     const first = definePlugin({
       id: "first",
       contributes: [
@@ -95,18 +95,14 @@ describe("resolvePlugins", () => {
       ],
     })
 
-    const keys = entriesOf(resolvePlugins([first, second]), Nav).map(
-      (entry) => entry.key,
-    )
+    const entries = entriesOf(resolvePlugins([first, second]), Nav)
 
-    expect(keys).toEqual(["second/early", "first/b", "first/a", "second/tie"])
-  })
-
-  it("stamps seq as the position after sorting", () => {
-    const entries = entriesOf(resolvePlugins([pricing, billing]), Nav)
-
-    expect(entries.map((entry) => entry.seq)).toEqual([0, 1])
-    expect(entries[0]?.key).toBe("billing/nav-link")
+    expect(entries.map((entry) => [entry.key, entry.seq])).toEqual([
+      ["second/early", 0],
+      ["first/b", 1],
+      ["first/a", 2],
+      ["second/tie", 3],
+    ])
   })
 
   it("resolves an empty plugin list to an empty graph", () => {

@@ -57,6 +57,9 @@ describe("createSlot ordering", () => {
 
     rerender(<App showA={false} showB={false} />)
     expect(items()).toEqual(["placeholder"])
+
+    rerender(<App showA={true} showB={true} />)
+    expect(items()).toEqual(["a", "b"])
   })
 
   it("keeps colliding orders apart by mount sequence, even after a remount", () => {
@@ -121,9 +124,7 @@ describe("createSlot ordering", () => {
       </>,
     )
 
-    expect(items()).toEqual(
-      [...orders].sort((a, b) => a - b).map((order) => String(order)),
-    )
+    expect(items()).toEqual(["-Infinity", "-2", "-1.5", "0", "0.5", "Infinity"])
   })
 
   it("keeps every fill when one is given a NaN order", () => {

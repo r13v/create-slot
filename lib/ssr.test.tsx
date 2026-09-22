@@ -116,23 +116,21 @@ afterEach(() => {
 })
 
 describe("registry SSR", () => {
-  it("renders contributions into the server HTML, in order", () => {
-    const html = renderToString(tree(resolvePlugins([pricing, reports])))
-    const text = textOf(html)
-
-    // useContribution() and the host's props both work during a server render.
-    expect(text).toContain("pricing in pricing (current)")
-    expect(text.indexOf("pricing in")).toBeLessThan(text.indexOf("reports"))
-  })
-
-  it("hydrates the server HTML without a mismatch", () => {
+  it("renders ordered server content and hydrates it without a mismatch", () => {
     // The contract asks for the same INPUTS, not the same object: two
     // resolutions of one plugin list are deep-equal, and that is enough.
     const html = renderToString(tree(resolvePlugins([pricing, reports])))
+    // The server must render the contributions, their identity and host props;
+    // matching empty output on both sides would not satisfy the SSR contract.
+    expect(textOf(html)).toBe("pricing in pricing (current)reports")
     const reported = collectReports()
 
-    hydrateInto(html, tree(resolvePlugins([pricing, reports])))
+    const { container } = hydrateInto(
+      html,
+      tree(resolvePlugins([pricing, reports])),
+    )
 
+    expect(container.textContent).toBe("pricing in pricing (current)reports")
     expect(reported.all).toEqual([])
   })
 
