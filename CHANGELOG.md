@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.1.0](https://github.com/r13v/create-slot/compare/v4.0.0...v4.1.0) (2026-10-30)
+
+
+### Features
+
+* **core:** make the registry's invariants enforceable ([40eb50b](https://github.com/r13v/create-slot/commit/40eb50bdd7fffc7a4989b87dceeab43def25f920))
+
+
+### Bug Fixes
+
+* **package:** correct the peer range and check the artifact as published ([0b11d41](https://github.com/r13v/create-slot/commit/0b11d411d334f1c6ee129ccbc55354000c3ccaeb))
+
 ## [4.0.0](https://github.com/r13v/create-slot/compare/v3.1.0...v4.0.0) (2026-08-31)
 
 
