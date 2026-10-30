@@ -2,7 +2,16 @@
 import type { ComponentType } from "react"
 import { describe, expect, expectTypeOf, it } from "vitest"
 
-import { definePlugin, defineSlot, entriesOf, resolvePlugins } from "./index"
+import {
+  assertNoDiagnostics,
+  type Contribution,
+  definePlugin,
+  defineSlot,
+  entriesOf,
+  filterResolution,
+  type Override,
+  resolvePlugins,
+} from "./index"
 
 type NavProps = { current: string }
 
@@ -379,5 +388,195 @@ describe("non-finite orders", () => {
     expect(entries.slice(2).map((entry) => entry.contributionId)).toEqual(
       expect.arrayContaining(["last-a", "last-b"]),
     )
+  })
+})
+
+describe("severity", () => {
+  it("separates a dropped contribution from a stale option", () => {
+    const twice = definePlugin({
+      id: "pricing",
+      contributes: [
+        Nav.contribute("nav-link", { component: NavLink }),
+        Nav.contribute("nav-link", { component: OtherNavLink }),
+      ],
+    })
+
+    const resolution = resolvePlugins([twice], {
+      disable: { plugins: ["ghost"] },
+    })
+
+    const bySeverity = Object.fromEntries(
+      resolution.diagnostics.map((d) => [d.code, d.severity]),
+    )
+
+    // The graph is not what the manifest declared: one entry is gone.
+    expect(bySeverity["duplicate-contribution-id"]).toBe("error")
+    // The graph is exactly as declared; the option names nothing.
+    expect(bySeverity["unknown-disable-target"]).toBe("warning")
+  })
+})
+
+describe("assertNoDiagnostics", () => {
+  it("passes a clean graph", () => {
+    const pricing = definePlugin({
+      id: "pricing",
+      contributes: [Nav.contribute("nav-link", { component: NavLink })],
+    })
+
+    expect(() => assertNoDiagnostics(resolvePlugins([pricing]))).not.toThrow()
+  })
+
+  it("throws on a dropped contribution, naming every one", () => {
+    const twice = definePlugin({
+      id: "pricing",
+      contributes: [
+        Nav.contribute("nav-link", { component: NavLink }),
+        Nav.contribute("nav-link", { component: OtherNavLink }),
+        Toolbar.contribute("bad/id", { component: ToolbarButton }),
+      ],
+    })
+
+    expect(() => assertNoDiagnostics(resolvePlugins([twice]))).toThrow(
+      /2 manifest defect\(s\)/,
+    )
+
+    expect(() => assertNoDiagnostics(resolvePlugins([twice]))).toThrow(
+      /duplicate-contribution-id/,
+    )
+  })
+
+  it("lets a stale option through: the graph is still as declared", () => {
+    const resolution = resolvePlugins([], {
+      disable: { plugins: ["ghost"] },
+    })
+
+    expect(resolution.diagnostics).toHaveLength(1)
+    expect(() => assertNoDiagnostics(resolution)).not.toThrow()
+  })
+})
+
+describe("filterResolution", () => {
+  const pricing = definePlugin({
+    id: "pricing",
+    contributes: [
+      Nav.contribute("first", { order: 1, component: NavLink }),
+      Nav.contribute("second", { order: 2, component: OtherNavLink }),
+      Nav.contribute("third", { order: 3, component: NavLink }),
+      Toolbar.contribute("button", { component: ToolbarButton }),
+    ],
+  })
+
+  const resolved = resolvePlugins([pricing])
+
+  it("closes the holes a plain filter would leave in seq", () => {
+    const filtered = filterResolution(
+      resolved,
+      (entry) => entry.contributionId !== "second",
+    )
+
+    const entries = entriesOf(filtered, Nav)
+
+    expect(entries.map((entry) => entry.contributionId)).toEqual([
+      "first",
+      "third",
+    ])
+    // The whole point: `seq` is the position, so it must be 0,1 — not 0,2.
+    expect(entries.map((entry) => entry.seq)).toEqual([0, 1])
+    // `order` is a declared priority, not a position, so it is untouched.
+    expect(entries.map((entry) => entry.order)).toEqual([1, 3])
+  })
+
+  it("drops a slot left with nothing instead of keeping it empty", () => {
+    const filtered = filterResolution(
+      resolved,
+      (entry) => entry.slot !== Toolbar.name,
+    )
+
+    expect(Object.hasOwn(filtered.slots, Toolbar.name)).toBe(false)
+    expect(entriesOf(filtered, Toolbar)).toEqual([])
+  })
+
+  it("keeps the record prototype-less", () => {
+    const evil = defineSlot("__proto__")
+
+    const plugin = definePlugin({
+      id: "evil",
+      contributes: [evil.contribute("entry", { component: ToolbarButton })],
+    })
+
+    const filtered = filterResolution(resolvePlugins([plugin]), () => true)
+
+    expect(Object.getPrototypeOf(filtered.slots)).toBe(null)
+    expect(entriesOf(filtered, evil)).toHaveLength(1)
+    expect({}.toString).toBeTypeOf("function")
+  })
+
+  it("carries diagnostics through and leaves the source alone", () => {
+    const source = resolvePlugins([pricing], {
+      disable: { plugins: ["ghost"] },
+    })
+
+    const before = structuredCloneable(source)
+    const filtered = filterResolution(source, () => false)
+
+    expect(filtered.diagnostics).toBe(source.diagnostics)
+    expect(structuredCloneable(source)).toEqual(before)
+    expect(Object.keys(filtered.slots)).toEqual([])
+  })
+
+  it("composes, because the output is an ordinary Resolution", () => {
+    const once = filterResolution(resolved, (entry) => entry.order !== 2)
+    const twice = filterResolution(once, (entry) => entry.order !== 3)
+
+    expect(entriesOf(twice, Nav).map((entry) => entry.seq)).toEqual([0])
+  })
+})
+
+/** The metadata half of a Resolution, which is what must not move. */
+function structuredCloneable(resolution: {
+  slots: Readonly<Record<string, readonly { key: string; seq: number }[]>>
+}) {
+  return Object.entries(resolution.slots).map(([slot, entries]) => [
+    slot,
+    entries.map((entry) => `${entry.key}#${entry.seq}`),
+  ])
+}
+
+describe("minting", () => {
+  it("refuses a contribution that no descriptor produced", () => {
+    const forged = {
+      slot: Nav.name,
+      id: "forged",
+      order: 0,
+      // A component typed for another slot entirely — which is exactly what
+      // `contribute` exists to rule out, and what `ErasedComponent` cannot:
+      // it accepts every component by contravariance.
+      component: ToolbarButton,
+    }
+
+    // @ts-expect-error — only `slot.contribute()` mints a Contribution.
+    const smuggled: Contribution = forged
+
+    // The brand is a phantom: at runtime there is nothing to see.
+    expect(smuggled).toBe(forged)
+  })
+
+  it("refuses an override that no descriptor produced", () => {
+    const forged = { slot: Nav.name, target: "pricing/nav-link", order: 1 }
+
+    // @ts-expect-error — only `slot.override()` mints an Override.
+    const smuggled: Override = forged
+
+    expect(smuggled).toBe(forged)
+  })
+
+  it("refuses a component the slot does not hand props to", () => {
+    const Counter: ComponentType<{ count: number }> = () => null
+
+    // @ts-expect-error — Nav hands out NavProps, which carries no `count`.
+    Nav.contribute("counter", { component: Counter })
+
+    // A component that ignores props serves any slot, which is correct.
+    expect(Nav.contribute("any", { component: ToolbarButton })).toBeTruthy()
   })
 })

@@ -1,4 +1,5 @@
-import type { ErasedComponent, PluginDefinition, Slot } from "./types"
+import { eraseComponent } from "./erasure"
+import type { Contribution, Override, PluginDefinition, Slot } from "./types"
 
 /**
  * Identity plus a non-empty id check — and the one place where the plugin
@@ -19,6 +20,11 @@ export function definePlugin<T extends PluginDefinition>(definition: T): T {
  * sharing a bucket — the same invariant `definePlugin` guards. A contribution
  * id, by contrast, is validated by the resolver: a plugin's typo must surface
  * as a diagnostic, not take the application down at import time.
+ *
+ * `contribute` and `override` are the only places a `Contribution` or an
+ * `Override` is minted — the brands on those types say so, and the two casts
+ * below are where the brand is applied. They are sound because this is also
+ * the last point at which `Props` was checked.
  */
 export function defineSlot<Props extends object = Record<never, never>>(
   name: string,
@@ -29,19 +35,22 @@ export function defineSlot<Props extends object = Record<never, never>>(
 
   return {
     name,
-    contribute: (id, spec) => ({
-      slot: name,
-      id,
-      order: spec.order ?? 0,
-      // Erased on the way in, restored on the way out; this slot's own types
-      // guaranteed the match when `contribute` was called.
-      component: spec.component as unknown as ErasedComponent,
-    }),
-    override: (target, patch) => ({
-      slot: name,
-      target,
-      order: patch.order,
-      component: patch.component as unknown as ErasedComponent | undefined,
-    }),
+    contribute: (id, spec) =>
+      ({
+        slot: name,
+        id,
+        order: spec.order ?? 0,
+        component: eraseComponent(spec.component),
+      }) as Contribution,
+    override: (target, patch) =>
+      ({
+        slot: name,
+        target,
+        order: patch.order,
+        component:
+          patch.component === undefined
+            ? undefined
+            : eraseComponent(patch.component),
+      }) as Override,
   }
 }

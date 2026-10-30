@@ -8,22 +8,36 @@ import type { ComponentType } from "react"
 export type ErasedComponent = ComponentType<never>
 
 /**
- * One contribution, produced by `slot.contribute()`.
+ * Phantom brands. Declared, never assigned: they exist only in the type
+ * system, cost nothing at runtime, and cannot be written by hand.
+ *
+ * `ErasedComponent` accepts every component by contravariance, and `slot` is
+ * a plain string — so the shape of a contribution can never be the gate that
+ * keeps a mismatched component out. Only the path to it can, and the brand is
+ * what makes that path the only one.
+ */
+declare const CONTRIBUTION: unique symbol
+declare const OVERRIDE: unique symbol
+
+/**
+ * One contribution, produced by `slot.contribute()` — the only thing that can
+ * produce one.
  *
  * Data, not an element: a host renders it, so the whole list is known
  * synchronously — on the server too.
  */
 export type Contribution = {
-  slot: string
+  readonly [CONTRIBUTION]: true
+  readonly slot: string
   /**
    * Local id: unique within its plugin, never contains "/". The full address
    * is `${plugin.id}/${id}` — the React key, the override target, and the
    * name diagnostics call it by.
    */
-  id: string
+  readonly id: string
   /** Priority, not an array index. Equal values are a stable tie. */
-  order: number
-  component: ErasedComponent
+  readonly order: number
+  readonly component: ErasedComponent
 }
 
 /**
@@ -49,10 +63,12 @@ export type ContributionSpec<Props extends object> = {
 
 /**
  * A patch aimed at one full contribution id, created only via
- * `slot.override()` — which is where its `component` was still typed. Opaque
- * data afterwards; `resolvePlugins` consumes it.
+ * `slot.override()` — which is where its `component` was still typed, and
+ * which the brand makes the only way in. Opaque data afterwards;
+ * `resolvePlugins` consumes it.
  */
 export type Override = {
+  readonly [OVERRIDE]: true
   readonly slot: string
   /** The full contribution id (`pluginId/contributionId`) this patch targets. */
   readonly target: string
@@ -113,6 +129,19 @@ export type ResolvedEntry<Props extends object = never> = {
   component: ComponentType<Props>
 }
 
+/**
+ * How much a diagnostic costs the application.
+ *
+ * - `"error"` — the resolved graph is not what the manifests declared.
+ *   Something was dropped, or a patch was refused; the UI shows it.
+ * - `"warning"` — an option names a target that does not exist. The graph is
+ *   exactly as declared; it is the integrator's config that went stale.
+ *
+ * Branch on this, not on `code`: new codes arrive in minor releases, so an
+ * exhaustive `switch` over that union is a compile error waiting for one.
+ */
+export type DiagnosticSeverity = "error" | "warning"
+
 /** A problem the resolver found. Returned, never thrown. */
 export type Diagnostic = {
   code:
@@ -122,6 +151,7 @@ export type Diagnostic = {
     | "unknown-disable-target"
     | "unknown-override-target"
     | "override-slot-mismatch"
+  severity: DiagnosticSeverity
   message: string
   pluginId?: string
   contributionId?: string
@@ -137,7 +167,8 @@ export type Diagnostic = {
  *
  * `slots` is built without a prototype, so a slot named "constructor" or
  * "__proto__" is an ordinary key: naive reads cannot reach inherited values.
- * Read it with `Object.hasOwn` all the same — `entriesOf` does.
+ * Read it with `Object.hasOwn` all the same — `entriesOf` does. Derive one
+ * with `filterResolution`, which keeps that and the `seq` numbering intact.
  */
 export type Resolution = {
   /** Slot name → sorted contributions. A missing key means none contributed. */
