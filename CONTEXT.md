@@ -19,12 +19,17 @@ _Avoid_: Outlet, target, container, sink
 
 **Contribution**: One piece of UI addressed to a slot. Declared with a required
 local id; the full id `${pluginId}/${contributionId}` is its React key, its
-override address, and the name diagnostics call it by.
+override address, and the name diagnostics call it by. Minted by
+`slot.contribute()` and by nothing else — the type is branded, because the
+erased component type accepts every component and so could never say no.
 _Avoid_: Extension, widget, item, plugin UI
 
 **Resolution**: The pure, serializable output of `resolvePlugins`: slot name →
 sorted entries, plus diagnostics. The thing a provider is given, a validator
-inspects, and a server component can hand across the client boundary whole.
+inspects, and a server component can hand across the client boundary whole. A
+derived one — `filterResolution` — is the same thing and is called the same
+thing; the invariants that make it one (no prototype on the record, `seq` as
+the post-sort position) are restored, not merely preserved by luck.
 _Avoid_: Index, registry snapshot, graph object
 
 **Fill**: The runtime channel's contributor — a façade-only concept since 4.0:

@@ -52,6 +52,9 @@ jobs:
       - name: Chunk sharing smoke
         run: npm run test:chunks
 
+      - name: Package lint
+        run: npm run lint:package
+
       - name: Dry-run package
         run: npm pack --dry-run
 

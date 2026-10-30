@@ -16,13 +16,16 @@ export {
 // components. The directive above is for source consumers; the published
 // bundle gets it re-applied post-build, because bundling strips directives.
 export {
+  assertNoDiagnostics,
   type Contribution,
   type ContributionSpec,
   type Diagnostic,
+  type DiagnosticSeverity,
   definePlugin,
   defineSlot,
   type ErasedComponent,
   entriesOf,
+  filterResolution,
   type Override,
   type PluginDefinition,
   type Resolution,

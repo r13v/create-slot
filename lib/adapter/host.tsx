@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
 } from "react"
+import { eraseEntry, restoreComponent } from "../core/erasure"
 import { entriesOf } from "../core/resolve"
 import type { ErasedComponent, ResolvedEntry, Slot } from "../core/types"
 import {
@@ -93,11 +94,10 @@ export function SlotHost<Props extends object>(
         node: (
           <IsolatedEntry
             key={entry.key}
-            // The same erasure `Resolution.slots` already holds this entry
+            // Back to the erasure `Resolution.slots` already holds this entry
             // under; `entriesOf` restored Props for the caller, not for us.
-            entry={entry as unknown as ResolvedEntry}
-            // Erased on the way in, restored on the way out; the slot's own
-            // types guaranteed the match when `contribute` was called.
+            entry={eraseEntry(entry)}
+            // The host's own props, as the bag every contribution receives.
             props={props as unknown as ErasedProps}
           />
         ),
@@ -146,9 +146,10 @@ function isolate(component: ErasedComponent): ComponentType<ErasedProps> {
     return cached
   }
 
-  // Restores what `contribute` erased; the slot's own types guaranteed the match.
+  // The second cast is React's own typings, not ours: `memo` returns a
+  // `MemoExoticComponent`, which is a component everywhere but in the type.
   const wrapped = memo(
-    component as unknown as ComponentType<ErasedProps>,
+    restoreComponent<ErasedProps>(component),
   ) as unknown as ComponentType<ErasedProps>
 
   isolated.set(component, wrapped)

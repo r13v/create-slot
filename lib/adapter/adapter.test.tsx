@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import React from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest"
 import {
   collectRecoveries,
   stopCollectingRecoveries,
@@ -21,6 +21,7 @@ function items(): string[] {
 
 function silenceConsole() {
   vi.spyOn(console, "error").mockImplementation(() => {})
+  vi.spyOn(console, "warn").mockImplementation(() => {})
 }
 
 afterEach(() => {
@@ -191,6 +192,7 @@ describe("provider", () => {
 
   it("reports diagnostics once, deduped by content", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {})
 
     const resolve = () =>
       resolvePlugins([], { disable: { plugins: ["ghost"] } })
@@ -207,12 +209,43 @@ describe("provider", () => {
 
     rerender(<App tick={2} />)
 
-    const reported = errors.mock.calls.filter((call) =>
+    const reported = warnings.mock.calls.filter((call) =>
       String(call[0]).includes("[create-slot]"),
     )
 
     expect(reported).toHaveLength(1)
     expect(String(reported[0]?.[0])).toContain('"ghost"')
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it("separates a dropped contribution from a stale option", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const Menu = defineSlot("adapter.severity")
+
+    const plugin = definePlugin({
+      id: "dup",
+      contributes: [
+        Menu.contribute("same", { component: () => <li>first</li> }),
+        Menu.contribute("same", { component: () => <li>second</li> }),
+      ],
+    })
+
+    render(
+      <SlotProvider
+        resolution={resolvePlugins([plugin], {
+          disable: { plugins: ["ghost"] },
+        })}
+      >
+        <p>ok</p>
+      </SlotProvider>,
+    )
+
+    // One contribution was dropped — the UI is not what the manifest said.
+    expect(String(errors.mock.calls)).toContain("Duplicate contribution id")
+    // Nothing was dropped here; a disable target simply does not exist.
+    expect(String(warnings.mock.calls)).toContain('"ghost"')
   })
 })
 
@@ -681,9 +714,10 @@ describe("renderEntries", () => {
 })
 
 describe("descriptor anchoring", () => {
-  it("serves a frozen descriptor through the fallback registry", () => {
-    // Descriptors are pure data, so freezing one is a legitimate user move —
-    // the props context then cannot live on the object and must fall back.
+  it("serves a frozen descriptor", () => {
+    // Descriptors are pure data, so freezing one is a legitimate user move.
+    // The context lives in a WeakMap keyed by the descriptor, which needs
+    // nothing from the object itself — no extensibility, no hidden property.
     const Menu = Object.freeze(
       defineSlot<{ current: string }>("adapter.frozen"),
     )
@@ -711,8 +745,8 @@ describe("descriptor anchoring", () => {
   it("does not leak the cached context into a spread clone", () => {
     const Menu = defineSlot<{ current: string }>("adapter.spread")
 
-    // Prime the cache, then clone: the property is non-enumerable, so the
-    // clone is a clean descriptor of its own, not a half-shared one.
+    // Prime the cache, then clone: a clone is a different object, so it is
+    // a different WeakMap key — a clean descriptor of its own.
     propsContextOf(Menu)
 
     const clone = { ...Menu }
@@ -722,18 +756,33 @@ describe("descriptor anchoring", () => {
 })
 
 describe("adapter copies", () => {
-  it("resolves one props context per descriptor across module copies", async () => {
+  it("cannot serve a host from one copy under a provider from another", async () => {
+    // This is the scenario the symbol-anchored props-context registry used
+    // to defend, and it is unreachable: a host finds its provider through
+    // `ResolutionContext`, an ordinary module-level context, so a second
+    // copy fails HERE — before a props context is ever consulted. Defending
+    // the later step while the earlier one is fatal bought nothing.
+    //
+    // One copy is what the build guarantees (`splitting: true`, re-checked
+    // by the chunk-sharing smokes). This test pins what the failure looks
+    // like if that guarantee ever breaks: loud, and at the first host.
+    silenceConsole()
+
     const Menu = defineSlot<{ current: string }>("adapter.copies")
-    const first = propsContextOf(Menu)
 
     vi.resetModules()
 
-    const second = await import("./hooks")
+    const otherCopy = await import("./host")
 
-    // Two genuinely different module instances…
-    expect(second.propsContextOf).not.toBe(propsContextOf)
-    // …still meet in the descriptor's own cached context.
-    expect(second.propsContextOf(Menu)).toBe(first)
+    expect(otherCopy.SlotHost).not.toBe(SlotHost)
+
+    expect(() =>
+      render(
+        <SlotProvider resolution={resolvePlugins([])}>
+          <otherCopy.SlotHost slot={Menu} props={{ current: "/" }} />
+        </SlotProvider>,
+      ),
+    ).toThrow("[create-slot] 'SlotHost' rendered outside of 'SlotProvider'")
   })
 })
 
@@ -1125,11 +1174,13 @@ describe("dev diagnostics ergonomics", () => {
     vi.stubEnv("NODE_ENV", "production")
     vi.resetModules()
 
-    const errors: string[] = []
+    const logged: string[] = []
+    const collect = (...args: unknown[]) => {
+      logged.push(args.map(String).join(" "))
+    }
 
-    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      errors.push(args.map(String).join(" "))
-    })
+    vi.spyOn(console, "error").mockImplementation(collect)
+    vi.spyOn(console, "warn").mockImplementation(collect)
 
     // A fresh module graph, because the check is decided once, at import.
     const released = await import("./provider")
@@ -1160,6 +1211,70 @@ describe("dev diagnostics ergonomics", () => {
 
     // …but a shipped build pays nothing to print them, and the
     // renderEntries-with-children warning is stripped with it.
-    expect(errors.join("\n")).not.toContain("[create-slot]")
+    expect(logged.join("\n")).not.toContain("[create-slot]")
+  })
+})
+
+describe("type contracts", () => {
+  // Compile-time assertions. `npm run typecheck` covers this file, so each
+  // `@ts-expect-error` below is load-bearing twice over: it fails the build
+  // if the error stops happening, and it fails it if the error spreads.
+  // The elements are built and never rendered — the typing is the assertion.
+  it("requires props exactly when the slot declares them", () => {
+    const Row = defineSlot<{ dealId: string }>("adapter.contract.typed")
+    const Bare = defineSlot("adapter.contract.bare")
+
+    // @ts-expect-error — `props` is required once a slot declares props.
+    const missing = <SlotHost slot={Row} />
+    const given = <SlotHost slot={Row} props={{ dealId: "d-1" }} />
+    const bare = <SlotHost slot={Bare} />
+
+    expect([missing, given, bare].every(React.isValidElement)).toBe(true)
+  })
+
+  it("refuses a props bag that is not the slot's", () => {
+    const Row = defineSlot<{ dealId: string }>("adapter.contract.mismatch")
+
+    // @ts-expect-error — this slot hands out a dealId, never a count.
+    const wrong = <SlotHost slot={Row} props={{ count: 1 }} />
+
+    expect(React.isValidElement(wrong)).toBe(true)
+  })
+
+  it("keeps a literal from widening, so the slot stays the only source", () => {
+    const View = defineSlot<{ mode: "row" | "card" }>("adapter.contract.mode")
+
+    // Without `NoInfer` on `props`, Props is inferred from the bag too and
+    // "row" widens to string, which then fights the descriptor.
+    const element = <SlotHost slot={View} props={{ mode: "row" }} />
+
+    expect(React.isValidElement(element)).toBe(true)
+  })
+
+  it("types a contribution's own props from the slot it reads", () => {
+    const Row = defineSlot<{ dealId: string }>("adapter.contract.hook")
+
+    function Reader() {
+      const props = useSlotProps(Row)
+
+      expectTypeOf(props).toEqualTypeOf<{ dealId: string } | null>()
+
+      return <li>{props?.dealId ?? "none"}</li>
+    }
+
+    const plugin = definePlugin({
+      id: "p",
+      contributes: [Row.contribute("reader", { component: Reader })],
+    })
+
+    render(
+      <SlotProvider resolution={resolvePlugins([plugin])}>
+        <ul>
+          <SlotHost slot={Row} props={{ dealId: "d-7" }} />
+        </ul>
+      </SlotProvider>,
+    )
+
+    expect(items()).toEqual(["d-7"])
   })
 })

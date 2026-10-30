@@ -165,6 +165,16 @@ const resolution = resolvePlugins([pricing], {
 </SlotProvider>
 ```
 
+A manifest typo never throws — it comes back on `resolution.diagnostics`, with a `severity` saying whether the graph still matches what the manifests declared. One line makes the errors fatal where that is the right answer:
+
+```ts
+import { assertNoDiagnostics, filterResolution } from "create-slot/core"
+
+assertNoDiagnostics(resolvePlugins(PLUGINS)) // in a test: the catalog validator
+```
+
+The Resolution is plain data, so the policies the library deliberately leaves out — limits, allowlists, "exactly one owner" — are a predicate away, with `filterResolution` keeping the invariants a raw `.filter` would lose.
+
 The only SSR requirement: give the resolver the same inputs, in the same order, on the server and on the client. Under React Server Components the manifest itself can be server-legible — `create-slot/core` is React-free — so a server layout can resolve the graph and pass the whole `Resolution` across the client boundary ([REGISTRY.md](REGISTRY.md), "React Server Components").
 
 The two channels are separate on purpose: the registry is declarative and addressable; `createSlot` is the runtime channel for content that depends on live tree state.

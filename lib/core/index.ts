@@ -3,11 +3,17 @@
 // components, Node scripts and tests. The React adapter lives in the root
 // "create-slot" entry and re-exports everything here.
 export { definePlugin, defineSlot } from "./define"
-export { entriesOf, resolvePlugins } from "./resolve"
+export {
+  assertNoDiagnostics,
+  entriesOf,
+  filterResolution,
+  resolvePlugins,
+} from "./resolve"
 export type {
   Contribution,
   ContributionSpec,
   Diagnostic,
+  DiagnosticSeverity,
   ErasedComponent,
   Override,
   PluginDefinition,

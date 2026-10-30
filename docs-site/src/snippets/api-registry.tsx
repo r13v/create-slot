@@ -3,10 +3,12 @@
 
 // [!region prelude]
 import {
+  assertNoDiagnostics,
   ContributionBoundary,
   definePlugin,
   defineSlot,
   entriesOf,
+  filterResolution,
   type PluginDefinition,
   resolvePlugins,
   type SlotError,
@@ -64,6 +66,25 @@ export const diagnostics = resolution.diagnostics
 // server host maps over.
 export const navEntries = entriesOf(resolution, NavMenu)
 // [!endregion entries-of]
+
+// [!region filter-resolution]
+// A derived graph — the policies the library deliberately does not have. A
+// plain `.filter` over `resolution.slots` would drop the null prototype and
+// leave holes in `seq`; this keeps both, so the result is an ordinary
+// Resolution and policies compose.
+export const soleOwner = filterResolution(
+  resolution,
+  (entry) => entry.seq === 0,
+)
+// [!endregion filter-resolution]
+
+// [!region assert-no-diagnostics]
+// Throws on `severity: "error"` — a contribution dropped, a patch refused.
+// One line in a test is the catalog validator.
+export function checkCatalog() {
+  assertNoDiagnostics(resolvePlugins([pricing]))
+}
+// [!endregion assert-no-diagnostics]
 
 // [!region provider]
 function PluginFailed({ pluginId, reset }: SlotError & { reset: () => void }) {

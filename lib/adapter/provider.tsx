@@ -80,7 +80,13 @@ const reportDiagnostics: (diagnostics: readonly Diagnostic[]) => void =
           lastReported = serialized
 
           for (const diagnostic of diagnostics) {
-            console.error(`[create-slot] ${diagnostic.message}`)
+            // A warning is a `disable`/`override` option naming a target that
+            // does not exist: the graph is exactly what the manifests
+            // declared, so it must not read like a dropped contribution.
+            const log =
+              diagnostic.severity === "warning" ? console.warn : console.error
+
+            log(`[create-slot] ${diagnostic.message}`)
           }
         }
       })()
