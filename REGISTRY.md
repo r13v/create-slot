@@ -48,7 +48,7 @@ The registry never merges it.
 
 | entry              | contents                                                        | graph        |
 | ------------------ | --------------------------------------------------------------- | ------------ |
-| `create-slot/core` | `defineSlot`, `definePlugin`, `resolvePlugins`, `entriesOf`     | React-free   |
+| `create-slot/core` | `defineSlot`, `definePlugin`, `resolvePlugins`, `entriesOf`, `filterResolution`, `assertNoDiagnostics` | React-free   |
 | `create-slot`      | everything above, plus `SlotProvider`, `SlotHost`, `ContributionBoundary`, hooks, `createSlot` | `"use client"` |
 
 `create-slot/core` never imports React at runtime, so a server component, a
@@ -64,6 +64,8 @@ defineSlot<Props>(name): Slot<Props>            // { name, contribute, override 
 definePlugin(definition)                        // { id, contributes? } plus your own fields
 resolvePlugins(plugins, options?): Resolution   // { slots, diagnostics }
 entriesOf(resolution, slot): ResolvedEntry<Props>[]
+filterResolution(resolution, keep): Resolution  // a derived graph, invariants intact
+assertNoDiagnostics(resolution): void           // throws on severity "error"
 
 // adapter
 <SlotProvider resolution onError? Failed? Pending? />
@@ -77,6 +79,13 @@ createSlot<Props>(): RuntimeSlot<Props>
 ```
 
 The library reads two fields of a manifest: `id` and `contributes`.
+
+`Contribution` and `Override` are branded: `slot.contribute()` and
+`slot.override()` are the only things that mint one. The brand is a phantom —
+nothing exists at runtime — and it is what makes the descriptor the only way
+in. The shape alone could never do it: `ErasedComponent` accepts every
+component by contravariance, so a hand-written literal would type-check with
+another slot's component in it.
 
 A contribution's id is local to its plugin, never contains `/`, and must be
 unique inside it. The full id `${pluginId}/${contributionId}` is the React key
@@ -102,22 +111,27 @@ happens: grouping, `disable`, `override` patches, sorting
 (`order`, then plugin position, then declaration position), key minting.
 Problems come back as **diagnostics** — never thrown, never silently dropped:
 
-```
-duplicate-plugin-id · duplicate-contribution-id · invalid-contribution-id
-unknown-disable-target · unknown-override-target · override-slot-mismatch
-```
+| severity    | codes                                                                           | what it means                                             |
+| ----------- | ------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `"error"`   | `duplicate-plugin-id` · `duplicate-contribution-id` · `invalid-contribution-id` · `override-slot-mismatch` | The graph is not what the manifests declared.              |
+| `"warning"` | `unknown-disable-target` · `unknown-override-target`                            | An option names a target that does not exist.              |
 
-In development the provider prints them once per content change; a production
-build pays nothing for the printing, and the data is still on the Resolution
-for the application to assert on:
+Branch on `severity`, not on `code`: new codes arrive in minor releases, so an
+exhaustive `switch` over that union is a compile error waiting for one.
+
+In development the provider prints them once per content change — errors to
+`console.error`, warnings to `console.warn`. A production build pays nothing
+for the printing, and the data is still on the Resolution:
 
 ```ts
-expect(resolvePlugins(PLUGINS).diagnostics).toEqual([])
+it("has a clean catalog", () => {
+  assertNoDiagnostics(resolvePlugins(PLUGINS))
+})
 ```
 
-That one line in a test is the catalog validator. The Resolution is plain
-data — slot name → sorted entries plus the diagnostics — so an inspector, a
-policy check or a snapshot is a `.map` over it, not a library feature.
+That one line in a test is the catalog validator. It throws on errors only; a
+stale `disable` entry leaves the graph exactly as declared, so read
+`resolution.diagnostics` yourself for a check that is stricter.
 
 Typed overrides come from the slot, not from a string: a string id cannot
 carry `Props`, so `NavMenu.override(target, { component })` is where the
@@ -242,11 +256,21 @@ returns `null`. A host renders its children when no plugin *contributes*,
 which is not the same condition as "nothing is visible". Use CSS for the
 visual case: `ul:empty::before { content: "no items" }`.
 
-**No policies beyond `disable`.** Limits, allowlists and caps over the
-resolved graph are a `.filter` over `Resolution.slots` the application writes
-with its own vocabulary — and a cross-channel cap was rejected outright: a
-late client fill displacing markup the server already shipped is the class of
-bug this design exists to make unrepresentable (ADR 0004).
+**No policies beyond `disable`.** Limits, allowlists and caps are written by
+the application, in its own vocabulary, with `filterResolution`:
+
+```ts
+const soloOwner = filterResolution(resolution, (entry) => entry.seq === 0)
+```
+
+It exists because a raw `.filter` over `Resolution.slots` would quietly lose
+two invariants the type does not carry: the record has no prototype, and
+`seq` is the position *after* sorting, so filtering leaves holes in it. The
+output is an ordinary Resolution, so policies compose.
+
+A cross-channel cap was rejected outright: a late client fill displacing
+markup the server already shipped is the class of bug this design exists to
+make unrepresentable (ADR 0004).
 
 **No exclusive slots and no routing.** "Exactly one owner" is a table the
 application resolves from data before render — `resolveViews` in

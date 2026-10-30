@@ -132,12 +132,18 @@ and options produce a deep-equal Resolution every time — which is the entire
 | `overrides` | `readonly Override[]` | Typed patches from `slot.override()`. Later patches to one target win. |
 
 Problems come back on `resolution.diagnostics` — never thrown, never silently
-dropped. Six codes: `duplicate-plugin-id`, `duplicate-contribution-id`,
-`invalid-contribution-id`, `unknown-disable-target`,
-`unknown-override-target`, `override-slot-mismatch`. In development the
-provider prints them once per content change; in a test,
-`expect(resolvePlugins(PLUGINS).diagnostics).toEqual([])` is the catalog
-validator.
+dropped. Each carries a `severity`, and the line between the two is whether
+the graph still matches the manifests:
+
+| severity | codes | meaning |
+| --- | --- | --- |
+| `"error"` | `duplicate-plugin-id`, `duplicate-contribution-id`, `invalid-contribution-id`, `override-slot-mismatch` | Something was dropped or a patch refused. The UI shows it. |
+| `"warning"` | `unknown-disable-target`, `unknown-override-target` | An option names a target that does not exist. The graph is as declared. |
+
+Branch on `severity`, never exhaustively on `code`: new codes arrive in minor
+releases. In development the provider prints errors to `console.error` and
+warnings to `console.warn`, once per content change;
+[`assertNoDiagnostics`](#assertnodiagnostics) is the catalog validator.
 
 ## `entriesOf`
 
@@ -155,6 +161,51 @@ validator.
 Restores what `contribute` erased: each entry's `component` is typed by the
 slot, no cast. This is what a hand-rolled host — including a
 [server host](/server-rendering#a-server-host-in-userland) — maps over.
+
+## `filterResolution`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// [!include ~/snippets/api-registry.tsx:define-slot]
+// [!include ~/snippets/api-registry.tsx:contribute]
+// [!include ~/snippets/api-registry.tsx:define-plugin]
+// [!include ~/snippets/api-registry.tsx:resolve]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:filter-resolution]
+```
+
+A derived Resolution keeping only the entries the predicate accepts. This is
+how the [policies the library does not have](/registry#what-the-library-does-not-do)
+— limits, allowlists, "exactly one owner" — are written.
+
+It exists because `Resolution` carries two invariants its type does not show:
+`slots` has no prototype, so a slot named `constructor` stays an ordinary key,
+and `seq` is the position *after* sorting, so a plain `.filter` leaves holes
+in it. Both are restored here, and the output is an ordinary Resolution — so
+a provider accepts it and two policies compose.
+
+Diagnostics pass through untouched: they describe the manifests, not the view
+an application took of them. A slot left with no entries is dropped from the
+record, which is how `entriesOf` already reads "nothing contributed".
+
+## `assertNoDiagnostics`
+
+```tsx twoslash
+// [!include ~/snippets/api-registry.tsx:prelude]
+// [!include ~/snippets/api-registry.tsx:define-slot]
+// [!include ~/snippets/api-registry.tsx:contribute]
+// [!include ~/snippets/api-registry.tsx:define-plugin]
+// ---cut---
+// [!include ~/snippets/api-registry.tsx:assert-no-diagnostics]
+```
+
+Throws if any diagnostic has `severity: "error"`, listing every one. The
+resolver reports and carries on, because one plugin's typo must not take an
+application down at runtime; a build is the opposite setting, and this is the
+line that turns the same data into a failing test.
+
+Warnings do not throw — a stale `disable` entry leaves the graph exactly as
+declared. Read `resolution.diagnostics` directly for a stricter check.
 
 ## `SlotProvider`
 
@@ -325,13 +376,14 @@ All exported from the root entry; the core types also from `create-slot/core`.
 | --- | --- |
 | `Slot<Props>` | What `defineSlot` returns: `name`, `contribute`, `override`. Pure data. |
 | `ContributionSpec<Props>` | The second argument to `contribute`: `{ component, order? }`. |
-| `Contribution` | What `contribute` returns: `{ slot, id, order, component }`. Plain data. |
-| `Override` | What `slot.override` returns. Opaque data; `resolvePlugins` consumes it. |
+| `Contribution` | What `contribute` returns: `{ slot, id, order, component }`. Branded — `slot.contribute()` is the only thing that mints one. |
+| `Override` | What `slot.override` returns. Branded likewise; opaque data afterwards, which `resolvePlugins` consumes. |
 | `PluginDefinition` | The two fields the library reads: `id`, `contributes?`. |
 | `ResolveOptions` | The options bag: `disable?`, `overrides?`. |
 | `Resolution` | The resolved graph: `slots` (name → sorted entries) plus `diagnostics`. |
 | `ResolvedEntry<Props>` | One entry: `key`, `pluginId`, `contributionId`, `slot`, `order`, `seq`, `component`. |
-| `Diagnostic` | A problem the resolver found. Returned, never thrown. |
+| `Diagnostic` | A problem the resolver found: `code`, `severity`, `message`, plus the ids it concerns. Returned, never thrown. |
+| `DiagnosticSeverity` | `"error"` (the graph is not what the manifests declared) or `"warning"` (an option names nothing). |
 | `ErasedComponent` | A contribution's component with its props erased, so one graph holds every slot's. |
 | `SlotProviderProps` | `resolution`, `onError?`, `Failed?`, `Pending?`, `children?`. |
 | `SlotHostProps<Props>` | `slot`, `props`, `children?`, `renderEntries?`. |

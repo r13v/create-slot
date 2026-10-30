@@ -2,7 +2,9 @@
 
 How 4.x is put together. The public story is in [REGISTRY.md](../REGISTRY.md);
 this file is the internals map. The design decision behind the whole shape is
-[ADR 0004](adr/0004-resolution-core.md).
+[ADR 0004](adr/0004-resolution-core.md); what made its invariants enforceable
+rather than conventional is
+[ADR 0005](adr/0005-make-the-invariants-enforceable.md).
 
 ## The shape
 
@@ -36,8 +38,9 @@ flowchart LR
 | file                          | contents                                                       | depends on |
 | ----------------------------- | -------------------------------------------------------------- | ---------- |
 | `lib/core/types.ts`           | Every core type; React appears as types only.                  | —          |
-| `lib/core/define.ts`          | `defineSlot`, `definePlugin`.                                  | types      |
-| `lib/core/resolve.ts`         | `resolvePlugins`, `entriesOf`.                                 | types      |
+| `lib/core/erasure.ts`         | Every unsafe cast the registry makes, and the invariant that pays for them. | types |
+| `lib/core/define.ts`          | `defineSlot`, `definePlugin`.                                  | types, erasure |
+| `lib/core/resolve.ts`         | `resolvePlugins`, `entriesOf`, `filterResolution`, `assertNoDiagnostics`. | types, erasure |
 | `lib/adapter/provider.tsx`    | `SlotProvider`, three contexts, dev diagnostics printer.       | core       |
 | `lib/adapter/boundary.tsx`    | `ContributionBoundary`.                                        | provider   |
 | `lib/adapter/host.tsx`        | `SlotHost`, `HostEntry`, `IsolatedEntry`, `isolate`.           | boundary   |
@@ -68,7 +71,34 @@ Two properties are load-bearing:
 
 Diagnostics are returned, never thrown: one plugin's typo must not take the
 application down, and "nothing is dropped silently" is a feature the docs
-promise.
+promise. Each carries a `severity`, and the line between the two is whether
+the graph still matches the manifests: `"error"` means something was dropped
+or a patch refused, `"warning"` means an option names a target that does not
+exist. `assertNoDiagnostics` is the one line that turns the errors into a
+failing build, which is the whole of the "catalog validator" idea
+(`docs/ideas/07`) that the Resolution being plain data already paid for.
+
+`filterResolution` is the supported way to derive one. The docs send every
+rejected policy idea to "a `.filter` over `Resolution.slots`", and a raw
+filter loses two invariants the type does not carry — the null prototype, and
+`seq` as the post-sort position. Both paths build their record through one
+private `recordOf`, so a derived Resolution is indistinguishable from a
+resolved one.
+
+## Type erasure
+
+`ErasedComponent` is `ComponentType<never>`, which by contravariance accepts
+*every* component — that is what lets one graph hold every slot's
+contributions, and it is also why the type can never be the gate. The gate is
+the path: `Contribution` and `Override` carry phantom brands, so
+`slot.contribute()` and `slot.override()` are the only things that mint one,
+and those are where `Props` was last checked. Nothing exists at runtime.
+
+`lib/core/erasure.ts` holds every cast that follows from this, so the
+invariant is stated once instead of in a comment per call site. Two casts
+elsewhere are deliberately not there: the host's props bag
+(`Props` → `ErasedProps`) is about React props, not contributions, and the
+`memo` result cast is React's own typings.
 
 ## The adapter
 
@@ -93,10 +123,17 @@ everything at the entry boundary:
 The default layout is expressed through the same `renderEntries` path the
 escape hatch uses, so the two cannot drift.
 
-Per-slot props contexts anchor **on the descriptor**, cached lazily under
-`Symbol.for("create-slot.props-context")`. A module-level WeakMap would be one
-per bundled copy of the adapter (ESM/CJS interop), and a host from one copy
-must meet `useSlotProps` from the other in a single context.
+Per-slot props contexts live in a module-level WeakMap keyed by the
+descriptor. Through 4.0 they were anchored on the descriptor itself under
+`Symbol.for("create-slot.props-context")`, so that two copies of the adapter
+in one bundle would still meet in one context. That defended a state the
+library cannot reach: a host finds its provider through `ResolutionContext`,
+an ordinary module-level context, so two copies already fail with
+"'SlotHost' rendered outside of 'SlotProvider'" before a props context is
+read. One copy is what `splitting: true` guarantees and what the chunk-sharing
+smokes check, and that is the one place the guarantee belongs. Dropping the
+anchor also dropped the frozen-descriptor fallback registry and the hidden
+non-enumerable property on data the docs call pure.
 
 `ContributionBoundary` is exported: a hand-rolled host — including a server
 component mapping a Resolution — keeps the same failure semantics as the
@@ -124,14 +161,27 @@ to exactly `dist/index.js` and `dist/index.cjs` after the build, and fails the
 build if the directive appears anywhere else or a stale v3 artifact survives.
 Sourcemaps are off — the prepend would shift every mapping by a line.
 
-Three smokes guard the seam in CI:
+Four gates guard the seam in CI:
 
 - `npm run test:rsc` — under `node --conditions react-server`, the core entry
   loads by self-reference, the client entry **fails to**, and `dist/core` has
   no runtime react imports;
-- `npm run test:chunks` — both entries in one CJS process share one copy of
-  the shared modules (`Object.is` on `resolvePlugins`);
+- `npm run test:chunks` — in ESM *and* in CJS, both entries share one copy of
+  the shared modules (`Object.is` on `resolvePlugins`). Only the identity
+  *within* a format is a promise: dual publishing makes the two formats
+  different instances by construction;
+- `npm run lint:package` — `publint` on the exports map, `attw` resolving the
+  types from CJS, from ESM and under a bundler. Behavioural tests cannot see
+  any of this: a broken `exports` map or a `.d.cts` that silently resolves to
+  `any` leaves every test green;
 - `npm pack --dry-run` — the artifact list.
+
+`attw` runs with `--profile node16`, which skips node10 resolution. That is a
+scope decision, not a waiver: node10 ignores `exports` entirely, so it can
+reach neither the `/core` subpath nor the `react-server` condition that
+subpath exists for. Making the types resolve there would hand a consumer a
+boundary that looks whole and is not. `engines.node` says `>=18`, which is
+what `useSyncExternalStore` and the `"use client"` toolchains need.
 
 ## Development diagnostics
 
