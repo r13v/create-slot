@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.2.0](https://github.com/r13v/create-slot/compare/v4.1.0...v4.2.0) (2026-10-31)
+
+
+### Features
+
+* ship the documentation in the npm package for coding agents ([73ee96a](https://github.com/r13v/create-slot/commit/73ee96af8a7664f70eab5dda4c9c0469d46f150b))
+* ship the documentation in the npm package for coding agents ([310f322](https://github.com/r13v/create-slot/commit/310f322475fac47a550984e6b8376d189ba88e4d))
+
 ## [4.1.0](https://github.com/r13v/create-slot/compare/v4.0.0...v4.1.0) (2026-10-30)
 
 
