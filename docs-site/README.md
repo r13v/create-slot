@@ -87,15 +87,40 @@ a `toMarkdown()` fallback for the `llms.txt` output. See
 
 ## Pinned dependencies
 
-`waku` is pinned to `1.0.0-beta.6`. Vocs 2.x reads `router.unstable_events` in
-`ScrollRestoration`, and beta.9 removed it — the site builds fine, then throws
-`Cannot read properties of undefined (reading 'on')` during hydration and
-renders a blank page. Upgrade only after checking that vocs still agrees with
-waku's router API.
+`vocs` and `waku` are pinned to exact versions. Vocs reads waku's unstable
+router API, and a waku that disagrees with it builds fine, then fails during
+hydration with a blank page. Upgrade them together, and check the built site in
+a browser.
 
 `vocs.config.ts` must not import `typescript`. Doing so bundles the whole
 compiler into the built config, and `vocs preview` then crashes on `__filename`
 in ESM scope. The one compiler option the site needs is written as a literal.
+
+## Markdown for LLMs and the package
+
+Vocs writes the Markdown of each page to `dist/public/assets/md`, and
+`llms.txt` and `llms-full.txt` from the same source. Three things shape it:
+
+- `src/lib/markdown-includes.ts` puts the snippet code into the Markdown. Vocs
+  resolves `[!include]` only in the HTML page. The plugin drops what Twoslash
+  hides (the code above `// ---cut---` and the directives), and a missing
+  region fails the build.
+- `markdown.output.validation: "fail"` stops the build on an unrendered JSX
+  component or a broken link in the Markdown.
+- `postbuild` adds the base path to the links in the LLM files, copies each
+  page Markdown to `<page>.md` (the `llms.txt` links), and fixes the sitemap,
+  `robots.txt` and the skip link, where Vocs omits the base path. Then
+  `scripts/build-agent-docs.mjs` writes `../dist/docs`: the documentation that
+  the npm package ships for coding agents.
+
+`tsup` empties `dist`, so `npm run bundle` deletes `dist/docs`. Build the site
+after the last bundle before you publish; `prepublishOnly` refuses a package
+whose `dist/docs` is missing or documents another version.
+
+```sh
+npm run site:test    # unit tests of the postbuild scripts
+npm run site:verify  # builds at /create-slot and checks the output
+```
 
 ## Base path
 

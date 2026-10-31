@@ -4,7 +4,7 @@ Render React content in a different place in your component tree. You do not nee
 
 **[Documentation](https://r13v.github.io/create-slot)** — guides, live demos, and a type-checked API reference, plus an [FAQ](https://r13v.github.io/create-slot/faqs).
 
-**For AI agents** — install the [create-slot skill](https://r13v.github.io/create-slot/ai-agents) so your coding agent reads the current docs, or point it straight at the [LLM documentation index](https://r13v.github.io/create-slot/llms.txt) and the [full documentation for LLMs](https://r13v.github.io/create-slot/llms-full.txt).
+**For AI agents** — the package ships the documentation of its version in `node_modules/create-slot/dist/docs/SKILL.md`. Install the [create-slot skill](https://r13v.github.io/create-slot/ai-agents) so your coding agent reads it, or point the agent straight at the [LLM documentation index](https://r13v.github.io/create-slot/llms.txt) and the [full documentation for LLMs](https://r13v.github.io/create-slot/llms-full.txt).
 
 ---
 

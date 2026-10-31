@@ -5,21 +5,24 @@
   "scripts": {
     "dev": "vocs dev --port 5174",
     "build": "vocs build",
+    "postbuild": "node ../scripts/fix-vocs-skip-links.mjs && node ../scripts/fix-vocs-sitemap.mjs && node ../scripts/fix-vocs-llms-links.mjs && node ../scripts/build-agent-docs.mjs",
     "preview": "vocs preview --port 5174",
-    "typecheck": "tsc --project tsconfig.docs.json"
+    "typecheck": "tsc --project tsconfig.docs.json",
+    "test": "node --test tests/postbuild.test.mjs",
+    "test:output": "node --test tests/build-output.test.mjs"
   },
   "dependencies": {
     "create-slot": "file:..",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "vite": "^8.2.2",
-    "vocs": "^2.8.5",
-    "waku": "^1.0.0-beta.6"
+    "vocs": "2.12.0",
+    "waku": "1.0.0-rc.4"
   },
   "devDependencies": {
     "@types/node": "26.2.0",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "typescript": "6.0.3"
   }
 }

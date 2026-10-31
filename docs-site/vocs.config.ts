@@ -1,19 +1,22 @@
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vocs/config"
+import { remarkSnippetIncludes } from "./src/lib/markdown-includes.ts"
 
 const basePath = process.env.BASE_PATH ?? "/"
-const assetBasePath = basePath.replace(/\/$/, "")
 
 export default defineConfig({
   title: "create-slot",
   titleTemplate: "%s – create-slot",
   description:
     "A React plugin registry: features declare UI contributions, and the application renders them at named points without importing the features.",
-  iconUrl: `${assetBasePath}/favicon.svg`,
+  // Vocs adds basePath to iconUrl and logoUrl.
+  iconUrl: "/favicon.svg",
   logoUrl: {
-    light: `${assetBasePath}/create-slot-light.svg`,
-    dark: `${assetBasePath}/create-slot-dark.svg`,
+    light: "/create-slot-light.svg",
+    dark: "/create-slot-dark.svg",
   },
+  // Keep baseUrl separate from basePath: Vocs adds basePath to canonical URLs.
+  // postbuild fixes the sitemap and robots output, where Vocs 2.12.0 omits it.
   baseUrl: process.env.BASE_URL ?? "https://r13v.github.io",
   basePath,
   renderStrategy: "full-static",
@@ -24,6 +27,18 @@ export default defineConfig({
       light: "github-light",
       dark: "github-dark",
     },
+  },
+  markdown: {
+    output: {
+      // A JSX component left unrendered, or a broken link, fails the build.
+      validation: "fail",
+    },
+    outputRemarkPlugins: [
+      [
+        remarkSnippetIncludes,
+        { srcDir: fileURLToPath(new URL("./src", import.meta.url)) },
+      ],
+    ],
   },
   twoslash: {
     twoslashOptions: {

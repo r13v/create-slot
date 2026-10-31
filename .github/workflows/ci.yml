@@ -109,8 +109,19 @@ jobs:
       - name: Typecheck docs site
         run: npm run site:typecheck
 
+      - name: Test postbuild scripts
+        run: npm run site:test
+
       - name: Build docs site
         run: npm run build --prefix docs-site
         env:
           BASE_PATH: /create-slot
           BASE_URL: https://r13v.github.io
+
+      - name: Check docs output
+        run: npm run test:output --prefix docs-site
+        env:
+          BASE_PATH: /create-slot
+
+      - name: Package contains the docs
+        run: node scripts/build-agent-docs.mjs --check && npm pack --dry-run
