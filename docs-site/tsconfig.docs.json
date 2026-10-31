@@ -7,6 +7,7 @@
   "include": [
     "vocs.config.ts",
     "src/components/**/*.tsx",
+    "src/lib/**/*.ts",
     "src/snippets/**/*.ts",
     "src/snippets/**/*.tsx"
   ]

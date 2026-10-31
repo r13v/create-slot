@@ -67,9 +67,15 @@ jobs:
           node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs-site/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install docs dependencies
+        run: npm ci --prefix docs-site
 
       - name: Lint
         run: npm run lint
@@ -88,6 +94,19 @@ jobs:
 
       - name: Chunk sharing smoke
         run: npm run test:chunks
+
+      # `npm run bundle` empties dist, so the site build that writes
+      # dist/docs comes after the last bundle. prepublishOnly checks it.
+      - name: Build docs into the package
+        run: npm run site:build
+        env:
+          BASE_PATH: /create-slot
+          BASE_URL: https://r13v.github.io
+
+      - name: Check docs output
+        run: npm run test:output --prefix docs-site
+        env:
+          BASE_PATH: /create-slot
 
       - name: Package lint
         run: npm run lint:package

@@ -1,6 +1,6 @@
 ---
 title: Use with AI agents
-description: Install the create-slot skill and point a coding agent at the current documentation instead of its training data.
+description: Give a coding agent the documentation of the installed create-slot package, the LLM files of the site, or the installable skill, instead of its training data.
 showAskAi: false
 ---
 
@@ -9,16 +9,43 @@ showAskAi: false
 `create-slot` changed shape in 4.0: the [registry](/registry) resolves plugins
 into a `Resolution` before render, and an agent working from its training data
 will reach for `createSlot` and an effect — or for the removed
-`PluginProvider` — where `resolvePlugins` and `SlotProvider` belong. The skill
-on this page fixes that. It tells a compatible coding agent to read the current
+`PluginProvider` — where `resolvePlugins` and `SlotProvider` belong. Give it the
 documentation before it implements, reviews, debugs or explains create-slot
-code.
+code, in one of three ways:
+
+- Point it to the documentation in the installed package. It matches your
+  version and needs no network access.
+- Install the create-slot skill. It sends the agent to that documentation on
+  its own.
+- Give it the LLM files of the site. They describe the latest release.
+
+## Read the documentation from the package
+
+Each npm release after 4.1.0 contains the documentation of its own version in
+`node_modules/create-slot/dist/docs/`, so the agent needs no network access and
+cannot read about a version you do not have. For 4.1.0 and earlier, use the
+skill or the LLM files of the site, as the next sections describe.
+
+- `SKILL.md` is the index: one link and one description for each page. It
+  follows the [Agent Skills](https://agentskills.io/) format.
+- `references/<page>.md` is one page as Markdown, with the complete code of its
+  examples. Links between pages are relative paths.
+
+Copy this prompt into your agent session, and then add your task:
+
+```text
+Read node_modules/create-slot/dist/docs/SKILL.md and the pages in its
+references/ directory that concern my task. Treat those pages as the source of
+truth for create-slot. Use only documented APIs.
+```
+
+The live demos stay on the site. The package documentation links to them.
+
+## Install the skill
 
 The skill follows the open [Agent Skills](https://agentskills.io/) format. It is
 instructions for your agent — it does not install the `create-slot` package or
 touch your application.
-
-## Install the skill
 
 Run this from your project directory:
 
@@ -73,10 +100,11 @@ Use the create-slot skill. Review this feature for a runtime fill that should be
 a declared contribution, and for order values that only work by accident.
 ```
 
-When the skill activates it sends the agent to the
-[LLM documentation index](https://r13v.github.io/create-slot/llms.txt) and tells
-it to treat that as the source of truth — which is what keeps it from answering
-from a pre-4.0 memory of the API.
+When the skill activates it sends the agent to the documentation in the
+installed package. If the project does not have the package, the agent reads
+the [LLM documentation index](https://r13v.github.io/create-slot/llms.txt)
+instead. Either way it treats that documentation as the source of truth — which
+is what keeps it from answering from a pre-4.0 memory of the API.
 
 ## Read the docs without a skill
 
@@ -90,9 +118,10 @@ chat that can fetch a URL can use them directly:
 
 Start from `llms.txt` and fetch the pages you need. Reach for `llms-full.txt`
 when you would rather spend context than round trips, or when the agent cannot
-follow links. Every page is also served as plain Markdown under `/assets/md`,
-so one page costs one fetch — for example
-[`/assets/md/api.md`](https://r13v.github.io/create-slot/assets/md/api.md).
+follow links. Every page is also served as plain Markdown at its own path with
+`.md`, so one page costs one fetch — for example
+[`/create-slot/api.md`](https://r13v.github.io/create-slot/api.md). The site
+documents the latest release; the package documents the version you have.
 
 ## Verify the installation
 

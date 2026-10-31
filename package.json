@@ -29,10 +29,12 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "types": "./dist/index.d.ts",
   "repository": "r13v/create-slot",
+  "homepage": "https://r13v.github.io/create-slot",
   "scripts": {
     "bundle": "tsup && node scripts/prepend-use-client.mjs",
     "dev:spa": "npm run bundle && npm run dev --workspace crm-spa",
@@ -43,6 +45,8 @@
     "site:build": "npm run bundle && npm run build --prefix docs-site",
     "site:preview": "npm run preview --prefix docs-site",
     "site:typecheck": "npm run typecheck --prefix docs-site",
+    "site:test": "npm run test --prefix docs-site",
+    "site:verify": "npm run site:test && BASE_PATH=/create-slot npm run site:build && BASE_PATH=/create-slot npm run test:output --prefix docs-site",
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -54,7 +58,8 @@
     "bench": "vitest bench --run",
     "test:rsc": "node --conditions react-server test/react-server-smoke.mjs",
     "test:chunks": "node test/chunk-sharing-smoke.mjs",
-    "lint:package": "publint && attw --pack . --profile node16"
+    "lint:package": "publint && attw --pack . --profile node16",
+    "prepublishOnly": "node scripts/build-agent-docs.mjs --check"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"
@@ -67,14 +72,14 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.6",
     "@types/node": "^26.2.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.0",
     "jsdom": "^30.0.1",
     "knip": "^6.32.2",
     "publint": "^0.3.25",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
